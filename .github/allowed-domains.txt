@@ -1,0 +1,17 @@
+# Allowed hosts referenced by mirrored assets.
+# Add one host per line, comments start with #.
+
+# Primary app origin
+tweaktrak.ibiza.dev
+www.tweaktrak.ibiza.dev
+
+# Common first-party/static endpoints
+ibiza.dev
+www.ibiza.dev
+
+# Common web app/static dependencies (keep minimal and review additions)
+cdn.jsdelivr.net
+unpkg.com
+cdnjs.cloudflare.com
+fonts.googleapis.com
+fonts.gstatic.com

@@ -1,0 +1,248 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      tauri_changed: ${{ steps.filter.outputs.tauri }}
+      electron_changed: ${{ steps.filter.outputs.electron }}
+      workflow_changed: ${{ steps.filter.outputs.workflow }}
+      site_signature: ${{ steps.signature.outputs.site_signature }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect wrapper/workflow changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            tauri:
+              - 'src-tauri/**'
+            electron:
+              - 'electron/**'
+            workflow:
+              - '.github/**'
+
+      - name: Compute remote site signature (ETag + Last-Modified)
+        id: signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          headers="$(curl -fsSI https://tweaktrak.ibiza.dev/)"
+          etag="$(printf '%s\n' "$headers" | awk -F': ' 'tolower($1)=="etag" {print $2}' | tr -d '\r' | head -n1)"
+          last_modified="$(printf '%s\n' "$headers" | awk -F': ' 'tolower($1)=="last-modified" {print $2}' | tr -d '\r' | head -n1)"
+          signature="$(printf '%s|%s' "$etag" "$last_modified" | sha256sum | awk '{print $1}')"
+          echo "site_signature=$signature" >> "$GITHUB_OUTPUT"
+
+  fetch-site:
+    runs-on: ubuntu-latest
+    needs: check-changes
+    outputs:
+      cache_hit: ${{ steps.cache-site.outputs.cache-hit }}
+      hash_changed: ${{ steps.verify.outputs.hash_changed }}
+      integrity_passed: ${{ steps.verify.outputs.integrity_passed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore site cache
+        id: cache-site
+        uses: actions/cache@v4
+        with:
+          path: site
+          key: site-${{ needs.check-changes.outputs.site_signature }}
+
+      - name: Install fetch dependencies
+        if: steps.cache-site.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lftp wget2 httrack rsync
+
+      - name: Fetch site mirror (cache miss)
+        if: steps.cache-site.outputs.cache-hit != 'true'
+        run: |
+          chmod +x scripts/fetch-site.sh
+          scripts/fetch-site.sh site
+
+      - name: Verify mirrored site integrity
+        id: verify
+        run: |
+          chmod +x scripts/verify-site.sh
+          scripts/verify-site.sh site .github/site-baseline.json .github/allowed-domains.txt
+
+      - name: Create issue on baseline hash drift
+        if: steps.verify.outputs.hash_changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.existsSync('site-hash-diff.md')
+              ? fs.readFileSync('site-hash-diff.md', 'utf8')
+              : 'Site hash baseline mismatch detected.';
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Site baseline hash changed (${new Date().toISOString().slice(0, 10)})`,
+              body: `${body}\n\nPlease review and run update-baseline.yml if this change is expected.`
+            });
+
+      - name: Upload mirrored site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mirrored-site
+          path: site
+          if-no-files-found: error
+
+  build-tauri-windows:
+    runs-on: windows-latest
+    needs: [check-changes, fetch-site]
+    if: needs.fetch-site.result == 'success' && (needs.check-changes.outputs.tauri_changed == 'true' || needs.check-changes.outputs.workflow_changed == 'true' || needs.fetch-site.outputs.cache_hit != 'true')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download mirrored site
+        uses: actions/download-artifact@v4
+        with:
+          name: mirrored-site
+          path: site
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Windows wrapper with Tauri
+        uses: tauri-apps/tauri-action@v0.5.19
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: src-tauri
+          args: --config src-tauri/tauri.conf.json --profile release-ci
+
+      - name: Upload Tauri bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-windows-bundles
+          path: src-tauri/target/release-ci/bundle/**
+          if-no-files-found: error
+
+  build-electron-macos:
+    runs-on: macos-latest
+    needs: [check-changes, fetch-site]
+    if: needs.fetch-site.result == 'success' && (needs.check-changes.outputs.electron_changed == 'true' || needs.check-changes.outputs.workflow_changed == 'true' || needs.fetch-site.outputs.cache_hit != 'true')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download mirrored site
+        uses: actions/download-artifact@v4
+        with:
+          name: mirrored-site
+          path: site
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: electron/package.json
+
+      - name: Install Electron dependencies
+        working-directory: electron
+        run: npm install
+
+      - name: Build macOS wrapper
+        working-directory: electron
+        run: npm run build:mac
+
+      - name: Upload Electron macOS bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-macos-bundles
+          path: electron/dist/**
+          if-no-files-found: error
+
+  build-electron-linux:
+    runs-on: ubuntu-latest
+    needs: [check-changes, fetch-site]
+    if: needs.fetch-site.result == 'success' && (needs.check-changes.outputs.electron_changed == 'true' || needs.check-changes.outputs.workflow_changed == 'true' || needs.fetch-site.outputs.cache_hit != 'true')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download mirrored site
+        uses: actions/download-artifact@v4
+        with:
+          name: mirrored-site
+          path: site
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: electron/package.json
+
+      - name: Install Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools fakeroot rpm
+
+      - name: Install Electron dependencies
+        working-directory: electron
+        run: npm install
+
+      - name: Build Linux wrapper
+        working-directory: electron
+        run: npm run build:linux
+
+      - name: Upload Electron Linux bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-linux-bundles
+          path: electron/dist/**
+          if-no-files-found: error
+
+  release-gate:
+    runs-on: ubuntu-latest
+    needs:
+      - fetch-site
+      - build-tauri-windows
+      - build-electron-macos
+      - build-electron-linux
+    if: always()
+    steps:
+      - name: Enforce release gate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ needs.fetch-site.result }}" != "success" ]]; then
+            echo "Fetch/verify phase failed; release is blocked."
+            exit 1
+          fi
+
+          if [[ "${{ needs.fetch-site.outputs.hash_changed }}" == "true" ]]; then
+            echo "Baseline hash drift detected; release is blocked pending review."
+            exit 1
+          fi
+
+          for result in "${{ needs.build-tauri-windows.result }}" "${{ needs.build-electron-macos.result }}" "${{ needs.build-electron-linux.result }}"; do
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              echo "A platform build failed or was cancelled; release is blocked."
+              exit 1
+            fi
+          done
+
+          echo "Release gate passed."

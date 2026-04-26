@@ -1,0 +1,16 @@
+{
+  "name": "tweaktrak-wrapper-electron",
+  "version": "0.1.0",
+  "description": "Electron wrapper for TweakTrak",
+  "main": "main.js",
+  "license": "Unlicense",
+  "private": true,
+  "scripts": {
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  },
+  "devDependencies": {
+    "electron": "^39.8.1",
+    "electron-builder": "^24.13.3"
+  }
+}

@@ -1,0 +1,69 @@
+name: update-baseline
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install fetch dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lftp wget2 httrack rsync
+
+      - name: Fetch latest site snapshot
+        run: |
+          chmod +x scripts/fetch-site.sh
+          scripts/fetch-site.sh site
+
+      - name: Run integrity checks
+        run: |
+          chmod +x scripts/verify-site.sh
+          scripts/verify-site.sh site .github/site-baseline.json .github/allowed-domains.txt
+
+      - name: Update baseline hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          main_js="$(grep -oE '<script[^>]+src="[^"]+"' site/index.html | sed -E 's/.*src="([^"]+)"/\1/' | grep -Ei '\.js($|\?)' | head -n1 || true)"
+          main_js="${main_js%%\?*}"
+          main_js="${main_js#./}"
+          main_js="${main_js#/}"
+          if [[ -z "$main_js" || ! -f "site/$main_js" ]]; then
+            main_js="$(find site -type f -name '*.js' -printf '%s %P\n' | sort -nr | head -n1 | awk '{print $2}')"
+          fi
+
+          index_hash="$(sha256sum site/index.html | awk '{print $1}')"
+          main_hash="$(sha256sum "site/$main_js" | awk '{print $1}')"
+          now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+          cat > .github/site-baseline.json <<JSON
+          {
+            "index_html_sha256": "$index_hash",
+            "main_js_sha256": "$main_hash",
+            "main_js_path": "$main_js",
+            "updated_at": "$now"
+          }
+          JSON
+
+      - name: Commit updated baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet .github/site-baseline.json; then
+            echo "No baseline change detected."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/site-baseline.json
+          git commit -m "chore: refresh site hash baseline"
+          git push

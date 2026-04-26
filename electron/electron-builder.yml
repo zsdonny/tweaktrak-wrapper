@@ -1,0 +1,26 @@
+appId: dev.ibiza.tweaktrak.wrapper.electron
+productName: TweakTrak
+asar: true
+
+directories:
+  output: dist
+
+files:
+  - main.js
+  - package.json
+
+extraResources:
+  - from: ../site
+    to: site
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.music
+
+linux:
+  target:
+    - AppImage
+    - tar.gz
+  category: Audio

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://schema.tauri.app/config/2.0.0",
+  "productName": "TweakTrak",
+  "version": "0.1.0",
+  "identifier": "dev.ibiza.tweaktrak.wrapper",
+  "build": {
+    "frontendDist": "../site",
+    "beforeBuildCommand": "",
+    "beforeDevCommand": ""
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "TweakTrak",
+        "width": 1280,
+        "height": 800,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": []
+  }
+}
