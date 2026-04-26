@@ -15,3 +15,6 @@ unpkg.com
 cdnjs.cloudflare.com
 fonts.googleapis.com
 fonts.gstatic.com
+
+# W3C namespace URIs (used as xmlns in inline SVG/XML, not network endpoints)
+www.w3.org
