@@ -3,6 +3,8 @@ name: build
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
   schedule:
     - cron: "0 3 * * *"
@@ -14,6 +16,7 @@ concurrency:
 permissions:
   contents: read
   issues: write
+  pull-requests: read
 
 jobs:
   check-changes:
@@ -130,13 +133,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: src-tauri
-          args: --config src-tauri/tauri.conf.json --profile release-ci
+          args: --no-bundle -- --profile release-ci
 
-      - name: Upload Tauri bundles
+      - name: Upload Tauri Windows binary
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: tauri-windows-bundles
-          path: src-tauri/target/release-ci/bundle/**
+          name: tauri-windows-binary
+          path: src-tauri/target/release-ci/tweaktrak-wrapper.exe
           if-no-files-found: error
 
   build-electron-macos:
@@ -168,6 +172,7 @@ jobs:
         run: npm run build:mac
 
       - name: Upload Electron macOS bundles
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: electron-macos-bundles
@@ -208,6 +213,7 @@ jobs:
         run: npm run build:linux
 
       - name: Upload Electron Linux bundles
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: electron-linux-bundles
@@ -221,7 +227,7 @@ jobs:
       - build-tauri-windows
       - build-electron-macos
       - build-electron-linux
-    if: always()
+    if: always() && github.event_name != 'pull_request'
     steps:
       - name: Enforce release gate
         shell: bash
