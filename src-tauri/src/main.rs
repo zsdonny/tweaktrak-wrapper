@@ -82,17 +82,23 @@ mod smoke {
 }
 
 fn main() {
+    // generate_context!() must be called exactly once per binary because on
+    // macOS it embeds a linker symbol (_EMBED_INFO_PLIST). Calling it in both
+    // run_normal() and run_smoke() causes a duplicate-symbol linker error when
+    // the `smoke` feature is enabled.
+    let context = tauri::generate_context!();
+
     #[cfg(feature = "smoke")]
     {
         if smoke::is_enabled() {
-            run_smoke();
+            run_smoke(context);
             return;
         }
     }
-    run_normal();
+    run_normal(context);
 }
 
-fn run_normal() {
+fn run_normal(context: tauri::Context) {
     let builder = tauri::Builder::default();
 
     // On non-Windows: attach the MIDI polyfill + commands + hot-plug watcher.
@@ -122,12 +128,12 @@ fn run_normal() {
     };
 
     builder
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }
 
 #[cfg(feature = "smoke")]
-fn run_smoke() {
+fn run_smoke(context: tauri::Context) {
     let bootstrap = smoke::build_bootstrap_script();
     let result = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![smoke::__tweaktrak_smoke_report])
@@ -136,7 +142,7 @@ fn run_smoke() {
                 let _ = webview.eval(&bootstrap);
             }
         })
-        .run(tauri::generate_context!());
+        .run(context);
     if let Err(err) = result {
         smoke::write_failure_marker(&format!("tauri-run-error: {}", err));
         std::process::exit(1);
