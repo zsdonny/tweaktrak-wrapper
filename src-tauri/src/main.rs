@@ -1,5 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Web MIDI polyfill back-end — compiled only on non-Windows targets.
+// On Windows, WebView2 ships native Web MIDI and this module is not needed.
+#[cfg(not(target_os = "windows"))]
+mod midi;
+
+// The polyfill JS is included at compile time and injected into the webview at
+// page-load-started so it is available before any page script runs.
+#[cfg(not(target_os = "windows"))]
+const MIDI_POLYFILL: &str = include_str!("midi_polyfill.js");
+
 #[cfg(feature = "smoke")]
 mod smoke {
     use std::env;
@@ -83,7 +93,35 @@ fn main() {
 }
 
 fn run_normal() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // On non-Windows: attach the MIDI polyfill + commands + hot-plug watcher.
+    // On Windows: WebView2 already has native Web MIDI; no polyfill needed.
+    #[cfg(not(target_os = "windows"))]
+    let builder = {
+        let midi_state = midi::new_state();
+        builder
+            .manage(midi_state)
+            .invoke_handler(tauri::generate_handler![
+                midi::midi_list,
+                midi::midi_open_input,
+                midi::midi_close_input,
+                midi::midi_open_output,
+                midi::midi_close_output,
+                midi::midi_send,
+            ])
+            .on_page_load(|webview, payload| {
+                if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                    let _ = webview.eval(MIDI_POLYFILL);
+                }
+            })
+            .setup(|app| {
+                midi::start_hotplug_watcher(app.handle().clone());
+                Ok(())
+            })
+    };
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
