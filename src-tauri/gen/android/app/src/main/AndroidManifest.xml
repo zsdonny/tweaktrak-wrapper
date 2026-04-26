@@ -9,18 +9,14 @@
 
     <!-- BLE-MIDI -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
-    <!-- Android 12+ (API 31+) -->
+    <!-- Android 12+ (API 31+): required for BLE-MIDI scanning/connection -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"
-        android:maxSdkVersion="30"
         tools:ignore="PermissionImpliesUnsupportedChromeOsHardware" />
     <!-- Legacy Bluetooth (API 30 and below) -->
     <uses-permission android:name="android.permission.BLUETOOTH"
         android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
         android:maxSdkVersion="30" />
-    <!-- Android 12+ does not need the above; BLUETOOTH_CONNECT covers it -->
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"
-        tools:remove="android:maxSdkVersion" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
