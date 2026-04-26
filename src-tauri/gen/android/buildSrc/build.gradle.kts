@@ -13,6 +13,8 @@ gradlePlugin {
 
 repositories {
     google()
+    // JetBrains CDN mirror of Maven Central — avoids 403s from GitHub Actions runners
+    maven { url = uri("https://cache-redirector.jetbrains.com/maven-central") }
     mavenCentral()
 }
 
