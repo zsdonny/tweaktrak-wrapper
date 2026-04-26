@@ -41,7 +41,16 @@ jobs:
           fi
 
           index_hash="$(sha256sum site/index.html | awk '{print $1}')"
-          main_hash="$(sha256sum "site/$main_js" | awk '{print $1}')"
+          if [[ -n "$main_js" && -f "site/$main_js" ]]; then
+            main_hash="$(sha256sum "site/$main_js" | awk '{print $1}')"
+          else
+            # Self-contained SPA: no separate main JS file (assets are inlined
+            # or bundled into index.html). Mirror the fallback in
+            # scripts/verify-site.sh so the baseline still represents the
+            # current site and future drift is detected via index.html.
+            main_js="(inlined in index.html)"
+            main_hash="$index_hash"
+          fi
           now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
           cat > .github/site-baseline.json <<JSON
