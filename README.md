@@ -1,6 +1,6 @@
 # TweakTrak Desktop
 
-TweakTrak as a standalone desktop app for **Windows, macOS, and Linux** — the
+TweakTrak as a standalone app for **Windows, macOS, Linux, and Android** — the
 same TweakTrak you'd use at [tweaktrak.ibiza.dev](https://tweaktrak.ibiza.dev/),
 but in its own window, fully offline, with no browser tabs and no network
 chatter.
@@ -15,6 +15,8 @@ Grab the latest installer for your platform from the
 | Windows 10/11 (x64) | `TweakTrak-windows-x64.exe` | Double-click to launch — no installer wizard. |
 | macOS (Intel & Apple Silicon) | `TweakTrak-<version>.dmg` | Open the disk image and drag TweakTrak to **Applications**. |
 | Linux (x86_64) | `TweakTrak-<version>.AppImage` | `chmod +x` the file and double-click, or run it from a terminal. |
+| Android 7.0+ (arm64) | `TweakTrak-android-arm64-v8a.apk` | Sideload — see [Android notes](#android) below. |
+| Android 7.0+ (all devices) | `TweakTrak-android-universal.apk` | Sideload universal build (larger, works on any ABI). |
 
 Each release also ships a `SHA256SUMS.txt` file so you can verify the download:
 
@@ -53,6 +55,19 @@ TweakTrak site changes (or whenever the desktop wrapper itself is improved).
   allow it under **System Settings → Privacy & Security**.
 - **Linux** AppImages run on most modern distributions without installation.
   You may need `libfuse2` on some systems for AppImage support.
+- <a name="android"></a>**Android** APKs are not distributed via Google Play —
+  sideloading is required:
+  1. On your phone, go to **Settings → Apps → Special app access → Install
+     unknown apps** and enable it for your browser or file manager.
+  2. Download the `arm64-v8a` APK (or `universal` if you're unsure of your
+     device's ABI) directly to your phone.
+  3. Tap the downloaded file to install.
+  - Minimum Android 7.0 (API 24).
+  - **USB-MIDI** requires a USB OTG (On-The-Go) adapter. Connect the adapter
+    to your phone, plug in your MIDI device, and the app will see it
+    automatically via `navigator.requestMIDIAccess()`.
+  - **BLE-MIDI** devices: pair the device in the system **Bluetooth** settings
+    first, then open TweakTrak — it will appear in the MIDI device list.
 
 ## Reporting issues
 

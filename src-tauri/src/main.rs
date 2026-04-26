@@ -83,7 +83,22 @@ fn main() {
 }
 
 fn run_normal() {
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default();
+
+    // On Android, inject the Web MIDI API shim on every page load so the
+    // bundled TweakTrak app can reach USB-MIDI and BLE-MIDI devices via
+    // navigator.requestMIDIAccess() without knowing about the native plugin.
+    #[cfg(target_os = "android")]
+    {
+        builder = builder.on_page_load(|webview, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                let _ = webview.eval(include_str!("midi_shim.js"));
+            }
+        });
+    }
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
