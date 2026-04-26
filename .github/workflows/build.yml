@@ -2,9 +2,9 @@ name: build
 
 on:
   push:
-    branches: [main, 'feature/android-apk', 'feature/android-apk-*']
+    branches: [main]
   pull_request:
-    branches: [main, 'feature/android-apk']
+    branches: [main]
   workflow_dispatch:
   schedule:
     - cron: "0 3 * * *"
@@ -660,7 +660,7 @@ jobs:
           path: site
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4 # pin to commit SHA before merging to main
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -751,7 +751,7 @@ jobs:
           path: apk-out
 
       - name: Run Android emulator smoke test (API 33 x86_64)
-        uses: reactivecircus/android-emulator-runner@v2 # pin to commit SHA before merging to main
+        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2
         with:
           api-level: 33
           arch: x86_64
