@@ -17,6 +17,8 @@ Grab the latest installer for your platform from the
 | macOS — Electron (legacy) | `TweakTrak-<version>.dmg` | Same experience, larger download. Will be retired next release. |
 | Linux — Tauri (recommended) | `TweakTrak-<version>-tauri-linux.AppImage` | `chmod +x` then run. Full MIDI + SysEx via ALSA. |
 | Linux — Electron (legacy) | `TweakTrak-<version>.AppImage` | Same experience, larger download. Will be retired next release. |
+| Android 7.0+ (arm64) | `TweakTrak-android-arm64-v8a.apk` | Sideload — see [Android notes](#android) below. |
+| Android 7.0+ (all devices) | `TweakTrak-android-universal.apk` | Sideload universal build (larger, works on any ABI). |
 
 Each release also ships a `SHA256SUMS.txt` file so you can verify the download:
 
@@ -57,6 +59,19 @@ TweakTrak site changes (or whenever the desktop wrapper itself is improved).
   You may need `libfuse2` on some systems for AppImage support.
   The Tauri AppImage links against ALSA (`libasound`) which is present on all
   major distributions by default.
+- <a name="android"></a>**Android** APKs are not distributed via Google Play —
+  sideloading is required:
+  1. On your phone, go to **Settings → Apps → Special app access → Install
+     unknown apps** and enable it for your browser or file manager.
+  2. Download the `arm64-v8a` APK (or `universal` if you're unsure of your
+     device's ABI) directly to your phone.
+  3. Tap the downloaded file to install.
+  - Minimum Android 7.0 (API 24).
+  - **USB-MIDI** requires a USB OTG (On-The-Go) adapter. Connect the adapter
+    to your phone, plug in your MIDI device, and the app will see it
+    automatically via `navigator.requestMIDIAccess()`.
+  - **BLE-MIDI** devices: pair the device in the system **Bluetooth** settings
+    first, then open TweakTrak — it will appear in the MIDI device list.
 
 ## MIDI notes
 
