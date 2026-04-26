@@ -31,14 +31,21 @@ const CSP = [
   "form-action 'none'",
   "frame-ancestors 'none'",
   // The mirrored SPA inlines its scripts and styles into index.html; allow
-  // self + 'unsafe-inline' for those, but no remote origins.
-  "script-src 'self' 'unsafe-inline'",
+  // self + 'unsafe-inline' for those, but no remote origins. The audio
+  // engine instantiates a WebAssembly module at startup, which requires
+  // 'wasm-unsafe-eval' under CSP3 — without it the main mixer view fails
+  // to mount even though static dialogs (e.g. Effects) still render.
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
   "media-src 'self' blob:",
-  // No connect-src means XHR/fetch/WebSocket are all blocked.
-  "connect-src 'none'",
+  // The SPA fetches some of its own bundled resources at runtime via XHR/
+  // fetch, so connect-src has to permit same-origin (file://) and data:/
+  // blob: URIs. Egress to the public network is still hard-blocked by the
+  // webRequest.onBeforeRequest filter below, which only ever lets file:,
+  // data: and blob: requests through regardless of what CSP allows.
+  "connect-src 'self' data: blob:",
   "object-src 'none'",
   "worker-src 'self' blob:"
 ].join('; ');
