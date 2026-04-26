@@ -345,6 +345,18 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Cache cargo registry + release-ci target
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: cargo-build-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.toml', 'src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-build-${{ runner.os }}-
+            cargo-smoke-${{ runner.os }}-
+
       - name: Stamp CalVer into tauri.conf.json
         shell: pwsh
         run: |
