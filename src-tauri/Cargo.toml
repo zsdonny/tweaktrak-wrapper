@@ -10,6 +10,13 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+
+# MIDI polyfill back-end — not needed on Windows because WebView2 (Chromium)
+# ships a native Web MIDI implementation; Tauri on macOS and Linux uses
+# WKWebView / WebKitGTK which have no Web MIDI support.
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+midir = "0.10"
 
 [features]
 # `smoke` compiles in the runtime smoke probe used by the

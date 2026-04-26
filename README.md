@@ -13,8 +13,10 @@ Grab the latest installer for your platform from the
 | Platform | File | Notes |
 |---|---|---|
 | Windows 10/11 (x64) | `TweakTrak-windows-x64.exe` | Double-click to launch — no installer wizard. |
-| macOS (Intel & Apple Silicon) | `TweakTrak-<version>.dmg` | Open the disk image and drag TweakTrak to **Applications**. |
-| Linux (x86_64) | `TweakTrak-<version>.AppImage` | `chmod +x` the file and double-click, or run it from a terminal. |
+| macOS — Tauri (recommended) | `TweakTrak-<version>-tauri-macos.dmg` | Open the disk image and drag TweakTrak to **Applications**. Full MIDI + SysEx. |
+| macOS — Electron (legacy) | `TweakTrak-<version>.dmg` | Same experience, larger download. Will be retired next release. |
+| Linux — Tauri (recommended) | `TweakTrak-<version>-tauri-linux.AppImage` | `chmod +x` then run. Full MIDI + SysEx via ALSA. |
+| Linux — Electron (legacy) | `TweakTrak-<version>.AppImage` | Same experience, larger download. Will be retired next release. |
 
 Each release also ships a `SHA256SUMS.txt` file so you can verify the download:
 
@@ -53,6 +55,26 @@ TweakTrak site changes (or whenever the desktop wrapper itself is improved).
   allow it under **System Settings → Privacy & Security**.
 - **Linux** AppImages run on most modern distributions without installation.
   You may need `libfuse2` on some systems for AppImage support.
+  The Tauri AppImage links against ALSA (`libasound`) which is present on all
+  major distributions by default.
+
+## MIDI notes
+
+TweakTrak uses [Web MIDI](https://developer.mozilla.org/en-US/docs/Web/API/Web_MIDI_API)
+to communicate with your hardware synth.
+
+- **Windows:** Web MIDI is provided natively by the WebView2 (Edge/Chromium) runtime.
+- **macOS (Tauri build):** Web MIDI is provided by a native polyfill backed by
+  CoreMIDI. MIDI input/output and SysEx are all supported.
+- **Linux (Tauri build):** Web MIDI is provided by a native polyfill backed by
+  ALSA sequencer. MIDI input/output and SysEx are all supported.
+- **macOS / Linux (Electron builds):** Web MIDI is provided by Chromium's
+  built-in implementation (same as the Tauri polyfill in capability).
+
+**SysEx policy:** SysEx access is granted silently — no browser-style permission
+prompt is shown. TweakTrak uses SysEx to read and write synth parameters;
+silently allowing it matches the behaviour you would get running TweakTrak in
+a Chromium-based browser with Web MIDI enabled.
 
 ## Reporting issues
 

@@ -324,6 +324,124 @@ jobs:
           path: smoke-out-tauri/**
           if-no-files-found: warn
 
+  smoke-tauri-linux:
+    # Companion smoke gate for the Tauri wrapper on Linux (WebKitGTK).
+    # Builds the smoke-feature binary with ALSA MIDI support, launches it
+    # under xvfb, and asserts the same pass criteria as the Windows smoke.
+    runs-on: ubuntu-latest
+    needs: [check-changes, fetch-site]
+    permissions:
+      contents: read
+    outputs:
+      smoke_passed: ${{ steps.smoke.outputs.smoke_passed || 'false' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download mirrored site
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mirrored-site
+          path: site
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+
+      - name: Install system deps (WebKitGTK + ALSA + xvfb)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libssl-dev \
+            libasound2-dev xvfb
+
+      - name: Cache cargo registry + smoke target
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: cargo-smoke-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.toml', 'src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-smoke-${{ runner.os }}-
+
+      - name: Build Tauri smoke binary
+        working-directory: src-tauri
+        run: cargo build --features smoke
+
+      - name: Run Tauri smoke gate (Linux)
+        id: smoke
+        run: |
+          chmod +x scripts/smoke-tauri-unix.sh
+          scripts/smoke-tauri-unix.sh \
+            src-tauri/target/debug/tweaktrak-wrapper \
+            site
+
+      - name: Upload smoke report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: smoke-tauri-linux-report
+          path: smoke-out-tauri/**
+          if-no-files-found: warn
+
+  smoke-tauri-macos:
+    # Companion smoke gate for the Tauri wrapper on macOS (WKWebView).
+    # Builds the smoke-feature binary with CoreMIDI support and asserts the
+    # same pass criteria as the Windows smoke.
+    runs-on: macos-latest
+    needs: [check-changes, fetch-site]
+    permissions:
+      contents: read
+    outputs:
+      smoke_passed: ${{ steps.smoke.outputs.smoke_passed || 'false' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download mirrored site
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mirrored-site
+          path: site
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry + smoke target
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: cargo-smoke-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.toml', 'src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-smoke-${{ runner.os }}-
+
+      - name: Build Tauri smoke binary
+        working-directory: src-tauri
+        run: cargo build --features smoke
+
+      - name: Run Tauri smoke gate (macOS)
+        id: smoke
+        run: |
+          chmod +x scripts/smoke-tauri-unix.sh
+          scripts/smoke-tauri-unix.sh \
+            src-tauri/target/debug/tweaktrak-wrapper \
+            site
+
+      - name: Upload smoke report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: smoke-tauri-macos-report
+          path: smoke-out-tauri/**
+          if-no-files-found: warn
+
   build-tauri-windows:
     runs-on: windows-latest
     needs: [check-changes, fetch-site]
@@ -512,6 +630,197 @@ jobs:
           path: electron/${{ steps.linux-deliverable.outputs.appimage_path }}
           if-no-files-found: error
 
+  build-tauri-linux:
+    # Tauri wrapper for Linux — dual-shipped alongside the Electron build for
+    # one release cycle while MIDI parity is validated in the wild.
+    runs-on: ubuntu-latest
+    needs: [check-changes, fetch-site]
+    if: needs.fetch-site.result == 'success' && (needs.check-changes.outputs.tauri_changed == 'true' || needs.check-changes.outputs.workflow_changed == 'true' || needs.fetch-site.outputs.cache_hit != 'true')
+    permissions:
+      contents: read
+    outputs:
+      artifact_name: tauri-linux-binary
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download mirrored site
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mirrored-site
+          path: site
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+
+      - name: Install system deps (WebKitGTK + ALSA)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libssl-dev \
+            libasound2-dev \
+            libarchive-tools fakeroot rpm
+
+      - name: Cache cargo registry + release-ci target
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: cargo-build-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.toml', 'src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-build-${{ runner.os }}-
+            cargo-smoke-${{ runner.os }}-
+
+      - name: Stamp CalVer into tauri.conf.json
+        run: |
+          ver="${{ needs.check-changes.outputs.calver_version }}"
+          [[ -n "$ver" ]] || { echo "calver_version is empty" >&2; exit 1; }
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$ver\"/" src-tauri/tauri.conf.json
+          echo "Stamped: $(python3 -c "import json; print(json.load(open('src-tauri/tauri.conf.json'))['version'])")"
+
+      - name: Build Linux wrapper with Tauri
+        uses: tauri-apps/tauri-action@94571df7fd79dbe2aee6d279c0a6b66d086d3b3b # v0.5.19
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: src-tauri
+          args: --bundles appimage,deb,rpm -- --profile release-ci
+
+      - name: Locate AppImage
+        id: linux-tauri-deliverable
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$(find src-tauri/target/release-ci/bundle/appimage -type f -name '*.AppImage' | head -n1)"
+          if [[ -z "$appimage" ]]; then
+            echo "No AppImage produced" >&2
+            find src-tauri/target/release-ci/bundle || true
+            exit 1
+          fi
+          echo "appimage_path=$appimage" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Tauri Linux binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ github.event_name == 'pull_request' && format('pr-{0}-tauri-linux-binary', github.event.number) || 'tauri-linux-binary' }}
+          path: ${{ steps.linux-tauri-deliverable.outputs.appimage_path }}
+          if-no-files-found: error
+
+      - name: Locate .deb package
+        id: linux-tauri-deb
+        shell: bash
+        run: |
+          set -euo pipefail
+          deb="$(find src-tauri/target/release-ci/bundle/deb -type f -name '*.deb' | head -n1)"
+          if [[ -z "$deb" ]]; then
+            echo "No .deb produced" >&2
+            find src-tauri/target/release-ci/bundle || true
+            exit 1
+          fi
+          echo "deb_path=$deb" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Tauri Linux .deb
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ github.event_name == 'pull_request' && format('pr-{0}-tauri-linux-deb', github.event.number) || 'tauri-linux-deb' }}
+          path: ${{ steps.linux-tauri-deb.outputs.deb_path }}
+          if-no-files-found: error
+
+      - name: Locate .rpm package
+        id: linux-tauri-rpm
+        shell: bash
+        run: |
+          set -euo pipefail
+          rpm_pkg="$(find src-tauri/target/release-ci/bundle/rpm -type f -name '*.rpm' | head -n1)"
+          if [[ -z "$rpm_pkg" ]]; then
+            echo "No .rpm produced" >&2
+            find src-tauri/target/release-ci/bundle || true
+            exit 1
+          fi
+          echo "rpm_path=$rpm_pkg" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Tauri Linux .rpm
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ github.event_name == 'pull_request' && format('pr-{0}-tauri-linux-rpm', github.event.number) || 'tauri-linux-rpm' }}
+          path: ${{ steps.linux-tauri-rpm.outputs.rpm_path }}
+          if-no-files-found: error
+
+  build-tauri-macos:
+    # Tauri wrapper for macOS — dual-shipped alongside the Electron build for
+    # one release cycle while MIDI parity is validated in the wild.
+    runs-on: macos-latest
+    needs: [check-changes, fetch-site]
+    if: needs.fetch-site.result == 'success' && (needs.check-changes.outputs.tauri_changed == 'true' || needs.check-changes.outputs.workflow_changed == 'true' || needs.fetch-site.outputs.cache_hit != 'true')
+    permissions:
+      contents: read
+    outputs:
+      artifact_name: tauri-macos-binary
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download mirrored site
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mirrored-site
+          path: site
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry + release-ci target
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: cargo-build-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.toml', 'src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-build-${{ runner.os }}-
+            cargo-smoke-${{ runner.os }}-
+
+      - name: Stamp CalVer into tauri.conf.json
+        run: |
+          ver="${{ needs.check-changes.outputs.calver_version }}"
+          [[ -n "$ver" ]] || { echo "calver_version is empty" >&2; exit 1; }
+          sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"$ver\"/" src-tauri/tauri.conf.json
+          echo "Stamped: $(python3 -c "import json; print(json.load(open('src-tauri/tauri.conf.json'))['version'])")"
+
+      - name: Build macOS wrapper with Tauri
+        uses: tauri-apps/tauri-action@94571df7fd79dbe2aee6d279c0a6b66d086d3b3b # v0.5.19
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: src-tauri
+          args: --bundles dmg -- --profile release-ci
+
+      - name: Locate DMG
+        id: macos-tauri-deliverable
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="$(find src-tauri/target/release-ci/bundle/dmg -type f -name '*.dmg' | head -n1)"
+          if [[ -z "$dmg" ]]; then
+            echo "No DMG produced" >&2
+            find src-tauri/target/release-ci/bundle || true
+            exit 1
+          fi
+          echo "dmg_path=$dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Tauri macOS binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ github.event_name == 'pull_request' && format('pr-{0}-tauri-macos-binary', github.event.number) || 'tauri-macos-binary' }}
+          path: ${{ steps.macos-tauri-deliverable.outputs.dmg_path }}
+          if-no-files-found: error
+
   pr-gate:
     # Explicit pull-request gate. The smoke jobs already run on PRs and
     # GitHub will surface any of them as a failed check, but this
@@ -523,6 +832,8 @@ jobs:
       - fetch-site
       - smoke-electron
       - smoke-tauri-windows
+      - smoke-tauri-linux
+      - smoke-tauri-macos
     if: always() && github.event_name == 'pull_request'
     permissions:
       contents: read
@@ -542,6 +853,12 @@ jobs:
           if [[ "${{ needs.smoke-tauri-windows.result }}" != "success" ]]; then
             fail "Tauri (Windows) smoke gate failed on this PR. See the smoke-tauri-report artifact."
           fi
+          if [[ "${{ needs.smoke-tauri-linux.result }}" != "success" ]]; then
+            fail "Tauri (Linux) smoke gate failed on this PR. See the smoke-tauri-linux-report artifact."
+          fi
+          if [[ "${{ needs.smoke-tauri-macos.result }}" != "success" ]]; then
+            fail "Tauri (macOS) smoke gate failed on this PR. See the smoke-tauri-macos-report artifact."
+          fi
           echo "PR gate passed."
 
   release-gate:
@@ -550,7 +867,11 @@ jobs:
       - fetch-site
       - smoke-electron
       - smoke-tauri-windows
+      - smoke-tauri-linux
+      - smoke-tauri-macos
       - build-tauri-windows
+      - build-tauri-linux
+      - build-tauri-macos
       - build-electron-macos
       - build-electron-linux
     if: always() && github.event_name != 'pull_request'
@@ -578,7 +899,18 @@ jobs:
           if [[ "${{ needs.smoke-tauri-windows.result }}" != "success" ]]; then
             fail "Tauri (Windows) smoke gate failed; release is blocked. See the smoke-tauri-report artifact."
           fi
-          for result in "${{ needs.build-tauri-windows.result }}" "${{ needs.build-electron-macos.result }}" "${{ needs.build-electron-linux.result }}"; do
+          if [[ "${{ needs.smoke-tauri-linux.result }}" != "success" ]]; then
+            fail "Tauri (Linux) smoke gate failed; release is blocked. See the smoke-tauri-linux-report artifact."
+          fi
+          if [[ "${{ needs.smoke-tauri-macos.result }}" != "success" ]]; then
+            fail "Tauri (macOS) smoke gate failed; release is blocked. See the smoke-tauri-macos-report artifact."
+          fi
+          for result in \
+            "${{ needs.build-tauri-windows.result }}" \
+            "${{ needs.build-tauri-linux.result }}" \
+            "${{ needs.build-tauri-macos.result }}" \
+            "${{ needs.build-electron-macos.result }}" \
+            "${{ needs.build-electron-linux.result }}"; do
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
               fail "A platform build failed or was cancelled; release is blocked."
             fi
@@ -595,7 +927,11 @@ jobs:
       - fetch-site
       - smoke-electron
       - smoke-tauri-windows
+      - smoke-tauri-linux
+      - smoke-tauri-macos
       - build-tauri-windows
+      - build-tauri-linux
+      - build-tauri-macos
       - build-electron-macos
       - build-electron-linux
       - release-gate
@@ -603,6 +939,8 @@ jobs:
       always() && github.event_name != 'pull_request' &&
       needs.release-gate.outputs.gate_passed == 'true' &&
       needs.build-tauri-windows.result == 'success' &&
+      needs.build-tauri-linux.result == 'success' &&
+      needs.build-tauri-macos.result == 'success' &&
       needs.build-electron-macos.result == 'success' &&
       needs.build-electron-linux.result == 'success' &&
       (
@@ -629,23 +967,40 @@ jobs:
           set -euo pipefail
           mkdir -p release-assets
 
-          win_exe="$(find artifacts/tauri-windows-binary -type f -name '*.exe' | head -n1)"
-          mac_dmg="$(find artifacts/electron-macos-binary -type f -name '*.dmg' | head -n1)"
-          lin_app="$(find artifacts/electron-linux-binary -type f -name '*.AppImage' | head -n1)"
+          win_exe="$(find artifacts/tauri-windows-binary    -type f -name '*.exe'      | head -n1)"
+          mac_dmg="$(find artifacts/electron-macos-binary  -type f -name '*.dmg'      | head -n1)"
+          lin_app="$(find artifacts/electron-linux-binary  -type f -name '*.AppImage' | head -n1)"
+          mac_tauri="$(find artifacts/tauri-macos-binary   -type f -name '*.dmg'      | head -n1)"
+          lin_tauri="$(find artifacts/tauri-linux-binary   -type f -name '*.AppImage' | head -n1)"
+          lin_deb="$(find artifacts/tauri-linux-deb        -type f -name '*.deb'      | head -n1)"
+          lin_rpm="$(find artifacts/tauri-linux-rpm        -type f -name '*.rpm'      | head -n1)"
 
-          [[ -n "$win_exe" ]] || { echo "Missing Windows .exe" >&2; exit 1; }
-          [[ -n "$mac_dmg" ]] || { echo "Missing macOS .dmg" >&2; exit 1; }
-          [[ -n "$lin_app" ]] || { echo "Missing Linux .AppImage" >&2; exit 1; }
+          [[ -n "$win_exe"   ]] || { echo "Missing Windows .exe"            >&2; exit 1; }
+          [[ -n "$mac_dmg"   ]] || { echo "Missing Electron macOS .dmg"     >&2; exit 1; }
+          [[ -n "$lin_app"   ]] || { echo "Missing Electron Linux .AppImage" >&2; exit 1; }
+          [[ -n "$mac_tauri" ]] || { echo "Missing Tauri macOS .dmg"        >&2; exit 1; }
+          [[ -n "$lin_tauri" ]] || { echo "Missing Tauri Linux .AppImage"   >&2; exit 1; }
+          [[ -n "$lin_deb"   ]] || { echo "Missing Tauri Linux .deb"        >&2; exit 1; }
+          [[ -n "$lin_rpm"   ]] || { echo "Missing Tauri Linux .rpm"        >&2; exit 1; }
 
-          cp "$win_exe" "release-assets/TweakTrak-windows-x64.exe"
-          cp "$mac_dmg" "release-assets/$(basename "$mac_dmg")"
-          cp "$lin_app" "release-assets/$(basename "$lin_app")"
+          ver="${{ needs.check-changes.outputs.calver_version }}"
+          cp "$win_exe"   "release-assets/TweakTrak-windows-x64.exe"
+          cp "$mac_dmg"   "release-assets/$(basename "$mac_dmg")"
+          cp "$lin_app"   "release-assets/$(basename "$lin_app")"
+          cp "$mac_tauri" "release-assets/TweakTrak-${ver}-tauri-macos.dmg"
+          cp "$lin_tauri" "release-assets/TweakTrak-${ver}-tauri-linux.AppImage"
+          cp "$lin_deb"   "release-assets/TweakTrak-${ver}-tauri-linux.deb"
+          cp "$lin_rpm"   "release-assets/TweakTrak-${ver}-tauri-linux.rpm"
 
           (cd release-assets && sha256sum -- * > SHA256SUMS.txt)
           {
             echo "win_asset=release-assets/TweakTrak-windows-x64.exe"
-            echo "mac_asset=release-assets/$(basename "$mac_dmg")"
-            echo "lin_asset=release-assets/$(basename "$lin_app")"
+            echo "mac_electron_asset=release-assets/$(basename "$mac_dmg")"
+            echo "lin_electron_asset=release-assets/$(basename "$lin_app")"
+            echo "mac_tauri_asset=release-assets/TweakTrak-${ver}-tauri-macos.dmg"
+            echo "lin_tauri_asset=release-assets/TweakTrak-${ver}-tauri-linux.AppImage"
+            echo "lin_deb_asset=release-assets/TweakTrak-${ver}-tauri-linux.deb"
+            echo "lin_rpm_asset=release-assets/TweakTrak-${ver}-tauri-linux.rpm"
           } >> "$GITHUB_OUTPUT"
 
       - name: Compute CalVer tag
@@ -660,21 +1015,31 @@ jobs:
       - name: Build release notes
         id: notes
         env:
-          WIN_ASSET: ${{ steps.stage.outputs.win_asset }}
-          MAC_ASSET: ${{ steps.stage.outputs.mac_asset }}
-          LIN_ASSET: ${{ steps.stage.outputs.lin_asset }}
-          REL_VERSION: ${{ steps.ver.outputs.version }}
+          WIN_ASSET:          ${{ steps.stage.outputs.win_asset }}
+          MAC_ELECTRON_ASSET: ${{ steps.stage.outputs.mac_electron_asset }}
+          LIN_ELECTRON_ASSET: ${{ steps.stage.outputs.lin_electron_asset }}
+          MAC_TAURI_ASSET:    ${{ steps.stage.outputs.mac_tauri_asset }}
+          LIN_TAURI_ASSET:    ${{ steps.stage.outputs.lin_tauri_asset }}
+          LIN_DEB_ASSET:      ${{ steps.stage.outputs.lin_deb_asset }}
+          LIN_RPM_ASSET:      ${{ steps.stage.outputs.lin_rpm_asset }}
+          REL_VERSION:        ${{ steps.ver.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-          win_sha=$(sha256sum "$WIN_ASSET" | awk '{print $1}')
-          mac_sha=$(sha256sum "$MAC_ASSET" | awk '{print $1}')
-          lin_sha=$(sha256sum "$LIN_ASSET" | awk '{print $1}')
-          mac_name=$(basename "$MAC_ASSET")
-          lin_name=$(basename "$LIN_ASSET")
+          win_sha=$(sha256sum "$WIN_ASSET"          | awk '{print $1}')
+          mac_e_sha=$(sha256sum "$MAC_ELECTRON_ASSET" | awk '{print $1}')
+          lin_e_sha=$(sha256sum "$LIN_ELECTRON_ASSET" | awk '{print $1}')
+          mac_t_sha=$(sha256sum "$MAC_TAURI_ASSET"    | awk '{print $1}')
+          lin_t_sha=$(sha256sum "$LIN_TAURI_ASSET"    | awk '{print $1}')
+          lin_deb_sha=$(sha256sum "$LIN_DEB_ASSET"    | awk '{print $1}')
+          lin_rpm_sha=$(sha256sum "$LIN_RPM_ASSET"    | awk '{print $1}')
+          mac_e_name=$(basename "$MAC_ELECTRON_ASSET")
+          lin_e_name=$(basename "$LIN_ELECTRON_ASSET")
+          mac_t_name=$(basename "$MAC_TAURI_ASSET")
+          lin_t_name=$(basename "$LIN_TAURI_ASSET")
+          lin_deb_name=$(basename "$LIN_DEB_ASSET")
+          lin_rpm_name=$(basename "$LIN_RPM_ASSET")
 
-          # printf format strings below contain literal `%s` and backticks for
-          # markdown; single quotes are intentional to keep them literal.
           # shellcheck disable=SC2016
           {
             echo "TweakTrak Desktop **${REL_VERSION}** — the TweakTrak app, packaged as a standalone offline desktop application for Windows, macOS, and Linux."
@@ -683,27 +1048,36 @@ jobs:
             echo
             echo "Pick the file for your platform:"
             echo
-            echo "| Platform | File | How to use it |"
+            echo "| Platform | File | Notes |"
             echo "|---|---|---|"
             printf '| Windows 10/11 (x64) | `%s` | Download and double-click to launch. |\n' "TweakTrak-windows-x64.exe"
-            printf '| macOS (Intel & Apple Silicon) | `%s` | Open the disk image and drag TweakTrak into **Applications**. |\n' "$mac_name"
-            printf '| Linux (x86_64) | `%s` | `chmod +x` the file, then double-click or run it from a terminal. |\n' "$lin_name"
+            printf '| macOS — Tauri build (recommended) | `%s` | Open the disk image and drag TweakTrak into **Applications**. Full MIDI + SysEx support via native CoreMIDI. |\n' "$mac_t_name"
+            printf '| macOS — Electron build (legacy) | `%s` | Open the disk image and drag TweakTrak into **Applications**. |\n' "$mac_e_name"
+            printf '| Linux — Tauri build (recommended) | `%s` | `chmod +x` the file, then double-click or run from a terminal. Full MIDI + SysEx support via ALSA. |\n' "$lin_t_name"
+            printf '| Linux — Tauri build (.deb, Debian/Ubuntu) | `%s` | Install with `sudo apt install ./%s`. Full MIDI + SysEx support via ALSA. |\n' "$lin_deb_name" "$lin_deb_name"
+            printf '| Linux — Tauri build (.rpm, Fedora/openSUSE) | `%s` | Install with `sudo dnf install %s` (or `sudo zypper install %s`). Full MIDI + SysEx support via ALSA. |\n' "$lin_rpm_name" "$lin_rpm_name" "$lin_rpm_name"
+            printf '| Linux — Electron build (legacy) | `%s` | `chmod +x` the file, then double-click or run from a terminal. |\n' "$lin_e_name"
+            echo
+            echo "> **Note for macOS/Linux users:** Both a Tauri build and an Electron build are provided this release. The Tauri builds are recommended — they are smaller, start faster, and use native MIDI (CoreMIDI on macOS, ALSA on Linux). The Electron builds remain as a fallback; they will be retired in the next release once Tauri MIDI parity is confirmed."
             echo
             echo "## What's in this version"
             echo
             echo "- The current TweakTrak web app, bundled offline so it works with no internet connection."
             echo "- A real desktop window with its own icon — no browser, no tabs, no address bar."
             echo "- No telemetry, no tracking, no network calls. External links open in your normal browser."
+            echo "- **macOS / Linux Tauri builds:** Full Web MIDI support (inputs, outputs, SysEx) via a native MIDI polyfill backed by CoreMIDI (macOS) and ALSA (Linux). SysEx access is granted silently — no permission prompt."
             echo
             echo "## Verifying your download (optional)"
-            echo
-            echo "If you'd like to confirm a download wasn't corrupted or tampered with, the SHA-256 of each file is:"
             echo
             echo "| File | SHA-256 |"
             echo "|---|---|"
             printf '| `%s` | `%s` |\n' "TweakTrak-windows-x64.exe" "$win_sha"
-            printf '| `%s` | `%s` |\n' "$mac_name" "$mac_sha"
-            printf '| `%s` | `%s` |\n' "$lin_name" "$lin_sha"
+            printf '| `%s` | `%s` |\n' "$mac_t_name" "$mac_t_sha"
+            printf '| `%s` | `%s` |\n' "$mac_e_name" "$mac_e_sha"
+            printf '| `%s` | `%s` |\n' "$lin_t_name" "$lin_t_sha"
+            printf '| `%s` | `%s` |\n' "$lin_deb_name" "$lin_deb_sha"
+            printf '| `%s` | `%s` |\n' "$lin_rpm_name" "$lin_rpm_sha"
+            printf '| `%s` | `%s` |\n' "$lin_e_name" "$lin_e_sha"
             echo
             echo "All checksums are also attached as \`SHA256SUMS.txt\` — verify with \`sha256sum -c SHA256SUMS.txt\` (or \`shasum -a 256 -c SHA256SUMS.txt\` on macOS)."
             echo
@@ -711,10 +1085,10 @@ jobs:
             echo
             echo "- **Windows** uses the built-in WebView2 runtime — no extra install needed on Windows 11 or up-to-date Windows 10."
             echo "- **macOS** builds are not notarized. The first time you launch the app you may need to right-click → **Open** and confirm the Gatekeeper prompt."
-            echo "- **Linux** AppImages run on most modern distributions; some systems need \`libfuse2\` for AppImage support."
+            echo "- **Linux** Three formats are provided: AppImage (runs on most distros, may need \`libfuse2\`), .deb (Debian/Ubuntu: \`sudo apt install ./TweakTrak-*.deb\`), and .rpm (Fedora/openSUSE: \`sudo dnf install TweakTrak-*.rpm\`). All require an ALSA-capable sound system for MIDI (standard on all major distros)."
             echo "- TweakTrak Desktop does not auto-update — grab the newest release here whenever you'd like to upgrade."
             echo
-            echo "Found a bug? Please [open an issue](https://github.com/${GITHUB_REPOSITORY}/issues/new) with your OS and a quick description of what happened."
+            echo "Found a bug? Please [open an issue](https://github.com/${GITHUB_REPOSITORY}/issues/new) with your OS, which build you used (Tauri or Electron), and a quick description of what happened."
           } > release-body.md
           echo "body_path=release-body.md" >> "$GITHUB_OUTPUT"
 
@@ -731,4 +1105,6 @@ jobs:
             release-assets/TweakTrak-windows-x64.exe
             release-assets/*.dmg
             release-assets/*.AppImage
+            release-assets/*.deb
+            release-assets/*.rpm
             release-assets/SHA256SUMS.txt
