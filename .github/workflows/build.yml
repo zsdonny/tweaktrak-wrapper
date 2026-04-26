@@ -68,10 +68,10 @@ jobs:
           version="${base}"
           if git rev-parse -q --verify "refs/tags/v${base}" >/dev/null; then
             n=1
-            while git rev-parse -q --verify "refs/tags/v${base}.${n}" >/dev/null; do
+            while git rev-parse -q --verify "refs/tags/v${base}-${n}" >/dev/null; do
               n=$((n+1))
             done
-            version="${base}.${n}"
+            version="${base}-${n}"
           fi
           echo "calver_version=${version}" >> "$GITHUB_OUTPUT"
 
@@ -346,11 +346,16 @@ jobs:
           toolchain: stable
 
       - name: Stamp CalVer into tauri.conf.json
-        shell: bash
+        shell: pwsh
         run: |
-          version="${{ needs.check-changes.outputs.calver_version }}"
-          jq --arg v "$version" '.version = $v' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
-          mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
+          $ver = '${{ needs.check-changes.outputs.calver_version }}'
+          if (-not $ver) { throw "calver_version is empty" }
+          Write-Host "Stamping CalVer: $ver"
+          $path = 'src-tauri/tauri.conf.json'
+          $content = [IO.File]::ReadAllText($path)
+          $updated = $content -replace '"version":\s*"[^"]*"', ('"version": "' + $ver + '"')
+          [IO.File]::WriteAllText($path, $updated)
+          Write-Host "Stamped: $((Get-Content $path -Raw | ConvertFrom-Json).version)"
 
       - name: Build Windows wrapper with Tauri
         uses: tauri-apps/tauri-action@94571df7fd79dbe2aee6d279c0a6b66d086d3b3b # v0.5.19
