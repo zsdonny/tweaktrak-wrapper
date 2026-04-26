@@ -9,6 +9,7 @@ permissions:
 jobs:
   refresh-baseline:
     runs-on: ubuntu-latest
+    environment: baseline-approval
     permissions:
       contents: write
       issues: write
