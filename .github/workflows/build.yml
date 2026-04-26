@@ -70,7 +70,7 @@ jobs:
         if: steps.cache-site.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y lftp wget2 httrack rsync
+          sudo apt-get install -y wget wget2 httrack rsync
 
       - name: Fetch site mirror (cache miss)
         if: steps.cache-site.outputs.cache-hit != 'true'

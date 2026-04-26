@@ -9,8 +9,15 @@ rm -rf "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 mkdir -p "$SITE_DIR"
 
-fetch_with_lftp() {
-  lftp -e "set ssl:verify-certificate yes; mirror --parallel=8 --verbose / ${TMP_DIR}; bye" "$SITE_URL"
+fetch_with_wget() {
+  wget \
+    --mirror \
+    --adjust-extension \
+    --convert-links \
+    --page-requisites \
+    --no-host-directories \
+    --directory-prefix "$TMP_DIR" \
+    "$SITE_URL"
 }
 
 fetch_with_wget2() {
@@ -28,14 +35,14 @@ fetch_with_httrack() {
   httrack "$SITE_URL" -O "$TMP_DIR" "+tweaktrak.ibiza.dev/*" --quiet
 }
 
-if command -v lftp >/dev/null 2>&1; then
-  fetch_with_lftp
+if command -v wget >/dev/null 2>&1; then
+  fetch_with_wget
 elif command -v wget2 >/dev/null 2>&1; then
   fetch_with_wget2
 elif command -v httrack >/dev/null 2>&1; then
   fetch_with_httrack
 else
-  echo "No mirror tool found. Install one of: lftp, wget2, httrack" >&2
+  echo "No mirror tool found. Install one of: wget, wget2, httrack" >&2
   exit 1
 fi
 
