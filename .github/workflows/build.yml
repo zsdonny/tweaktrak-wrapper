@@ -29,6 +29,7 @@ jobs:
       workflow_changed: ${{ steps.filter.outputs.workflow }}
       baseline_changed: ${{ steps.filter.outputs.baseline }}
       site_signature: ${{ steps.signature.outputs.site_signature }}
+      calver_version: ${{ steps.calver.outputs.calver_version }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -56,6 +57,23 @@ jobs:
           last_modified="$(printf '%s\n' "$headers" | awk -F': ' 'tolower($1)=="last-modified" {print $2}' | tr -d '\r' | head -n1)"
           signature="$(printf '%s|%s' "$etag" "$last_modified" | sha256sum | awk '{print $1}')"
           echo "site_signature=$signature" >> "$GITHUB_OUTPUT"
+
+      - name: Compute CalVer version
+        id: calver
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$(date -u +'%Y.%-m.%-d')"
+          git fetch --tags --quiet || true
+          version="${base}"
+          if git rev-parse -q --verify "refs/tags/v${base}" >/dev/null; then
+            n=1
+            while git rev-parse -q --verify "refs/tags/v${base}.${n}" >/dev/null; do
+              n=$((n+1))
+            done
+            version="${base}.${n}"
+          fi
+          echo "calver_version=${version}" >> "$GITHUB_OUTPUT"
 
   fetch-site:
     runs-on: ubuntu-latest
@@ -327,6 +345,13 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Stamp CalVer into tauri.conf.json
+        shell: bash
+        run: |
+          version="${{ needs.check-changes.outputs.calver_version }}"
+          jq --arg v "$version" '.version = $v' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
+          mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
+
       - name: Build Windows wrapper with Tauri
         uses: tauri-apps/tauri-action@94571df7fd79dbe2aee6d279c0a6b66d086d3b3b # v0.5.19
         env:
@@ -370,6 +395,13 @@ jobs:
       - name: Install Electron dependencies
         working-directory: electron
         run: npm install
+
+      - name: Stamp CalVer into package.json
+        working-directory: electron
+        run: |
+          version="${{ needs.check-changes.outputs.calver_version }}"
+          jq --arg v "$version" '.version = $v' package.json > package.json.tmp
+          mv package.json.tmp package.json
 
       - name: Build macOS wrapper
         working-directory: electron
@@ -430,6 +462,13 @@ jobs:
       - name: Install Electron dependencies
         working-directory: electron
         run: npm install
+
+      - name: Stamp CalVer into package.json
+        working-directory: electron
+        run: |
+          version="${{ needs.check-changes.outputs.calver_version }}"
+          jq --arg v "$version" '.version = $v' package.json > package.json.tmp
+          mv package.json.tmp package.json
 
       - name: Build Linux wrapper
         working-directory: electron
@@ -598,18 +637,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base="$(date -u +'%Y.%-m.%-d')"
-          git fetch --tags --quiet || true
-          tag="v${base}"
-          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-            n=1
-            while git rev-parse -q --verify "refs/tags/v${base}.${n}" >/dev/null; do
-              n=$((n+1))
-            done
-            tag="v${base}.${n}"
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          version="${{ needs.check-changes.outputs.calver_version }}"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Build release notes
         id: notes
