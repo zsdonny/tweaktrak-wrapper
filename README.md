@@ -73,8 +73,9 @@ local storage on your computer.
 Most people don't need this — the
 [Releases page](https://github.com/zsdonny/tweaktrak-wrapper/releases/latest)
 has prebuilt binaries for every platform. If you'd like to build your own
-copy or contribute changes, see [`CONTRIBUTING`](.github/) and the workflow
-files under `.github/workflows/` for the canonical build recipe.
+copy or contribute changes, see the workflow files under `.github/workflows/`
+for the canonical build recipe, and [`.github/WORKFLOWS.md`](.github/WORKFLOWS.md)
+for a plain-English walkthrough of what each job does.
 
 ## Credits & licensing
 
