@@ -82,6 +82,27 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# portable_timeout SEC CMD [ARGS…]
+# Uses GNU timeout (Linux), gtimeout (macOS via Homebrew coreutils), or a
+# pure-bash watchdog when neither is available.
+portable_timeout() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout --signal=TERM --kill-after=10 "$secs" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout --signal=TERM --kill-after=10 "$secs" "$@"
+  else
+    "$@" &
+    local child=$!
+    ( sleep "$secs"; kill -TERM "$child" 2>/dev/null
+      sleep 10;     kill -KILL "$child" 2>/dev/null ) &
+    local watcher=$!
+    wait "$child"; local rc=$?
+    kill "$watcher" 2>/dev/null; wait "$watcher" 2>/dev/null || true
+    return "$rc"
+  fi
+}
+
 # On Linux: use a virtual display (xvfb) so the window can open headlessly.
 # On macOS: the runner has a real display; run directly.
 LAUNCHER=()
@@ -107,7 +128,7 @@ TWEAKTRAK_SMOKE=1 \
 TWEAKTRAK_SMOKE_REPORT="$REPORT_PATH" \
 TWEAKTRAK_SMOKE_WAIT_MS="$SMOKE_WAIT_MS" \
 TWEAKTRAK_SMOKE_HARD_TIMEOUT_MS="$SMOKE_HARD_TIMEOUT_MS" \
-  timeout --signal=TERM --kill-after=10 "$SMOKE_PROCESS_TIMEOUT_SEC" \
+  portable_timeout "$SMOKE_PROCESS_TIMEOUT_SEC" \
     ${LAUNCHER[@]+"${LAUNCHER[@]}"} "$BIN_PATH_ABS" \
     > "$RUN_LOG" 2>&1
 binary_exit=$?
