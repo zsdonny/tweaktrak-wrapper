@@ -5,6 +5,12 @@ edition = "2021"
 description = "TweakTrak desktop wrapper"
 license = "Unlicense"
 
+# Android requires a cdylib target; desktop builds use the bin target (main.rs).
+# Both coexist: cargo picks the right one per platform.
+[lib]
+name = "tweaktrak_wrapper_lib"
+crate-type = ["cdylib", "staticlib"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
