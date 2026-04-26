@@ -31,11 +31,11 @@ jobs:
       site_signature: ${{ steps.signature.outputs.site_signature }}
       calver_version: ${{ steps.calver.outputs.calver_version }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Detect wrapper / workflow / baseline changes
         id: filter
-        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         with:
           filters: |
             tauri:
@@ -90,11 +90,11 @@ jobs:
       main_js_path: ${{ steps.hashes.outputs.main_js_path }}
       main_js_sha256: ${{ steps.hashes.outputs.main_js_sha256 }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Restore site cache
         id: cache-site
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: site
           # Include fetch-site.sh in the cache key so changes to the
@@ -162,7 +162,7 @@ jobs:
 
       - name: Upload delta scan report
         if: steps.verify.outputs.hash_changed == 'true' && always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: delta-scan-report
           path: scan-out/**
@@ -170,7 +170,7 @@ jobs:
 
       - name: Create issue on baseline hash drift
         if: steps.verify.outputs.hash_changed == 'true'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const fs = require('fs');
@@ -190,7 +190,7 @@ jobs:
             });
 
       - name: Upload mirrored site artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mirrored-site
           path: site
@@ -216,16 +216,16 @@ jobs:
     outputs:
       smoke_passed: ${{ steps.smoke.outputs.smoke_passed || 'false' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Download mirrored site
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: mirrored-site
           path: site
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -245,7 +245,7 @@ jobs:
 
       - name: Upload smoke report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: smoke-electron-report
           path: smoke-out/**
@@ -274,10 +274,10 @@ jobs:
     outputs:
       smoke_passed: ${{ steps.smoke.outputs.smoke_passed || 'false' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Download mirrored site
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: mirrored-site
           path: site
@@ -288,7 +288,7 @@ jobs:
           toolchain: stable
 
       - name: Cache cargo registry + smoke target
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.cargo/registry
@@ -318,7 +318,7 @@ jobs:
 
       - name: Upload Tauri smoke report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: smoke-tauri-report
           path: smoke-out-tauri/**
@@ -334,10 +334,10 @@ jobs:
       artifact_name: tauri-windows-binary
       artifact_filename: tweaktrak-wrapper.exe
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Download mirrored site
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: mirrored-site
           path: site
@@ -348,7 +348,7 @@ jobs:
           toolchain: stable
 
       - name: Cache cargo registry + release-ci target
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.cargo/registry
@@ -372,7 +372,7 @@ jobs:
           Write-Host "Stamped: $((Get-Content $path -Raw | ConvertFrom-Json).version)"
 
       - name: Build Windows wrapper with Tauri
-        uses: tauri-apps/tauri-action@94571df7fd79dbe2aee6d279c0a6b66d086d3b3b # v0.5.19
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # action-v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -380,7 +380,7 @@ jobs:
           args: --no-bundle -- --profile release-ci
 
       - name: Upload Tauri Windows binary
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ github.event_name == 'pull_request' && format('pr-{0}-tauri-windows-binary', github.event.number) || 'tauri-windows-binary' }}
           path: src-tauri/target/release-ci/tweaktrak-wrapper.exe
@@ -395,16 +395,16 @@ jobs:
     outputs:
       artifact_name: electron-macos-binary
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Download mirrored site
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: mirrored-site
           path: site
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -441,7 +441,7 @@ jobs:
           echo "dmg_path=$dmg" >> "$GITHUB_OUTPUT"
 
       - name: Upload Electron macOS binary
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ github.event_name == 'pull_request' && format('pr-{0}-electron-macos-binary', github.event.number) || 'electron-macos-binary' }}
           path: electron/${{ steps.mac-deliverable.outputs.dmg_path }}
@@ -456,16 +456,16 @@ jobs:
     outputs:
       artifact_name: electron-linux-binary
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Download mirrored site
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: mirrored-site
           path: site
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -506,7 +506,7 @@ jobs:
           echo "appimage_path=$appimage" >> "$GITHUB_OUTPUT"
 
       - name: Upload Electron Linux binary
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ github.event_name == 'pull_request' && format('pr-{0}-electron-linux-binary', github.event.number) || 'electron-linux-binary' }}
           path: electron/${{ steps.linux-deliverable.outputs.appimage_path }}
@@ -613,12 +613,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
 
@@ -719,7 +719,7 @@ jobs:
           echo "body_path=release-body.md" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: TweakTrak ${{ steps.ver.outputs.version }}
