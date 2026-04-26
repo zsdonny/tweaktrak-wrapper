@@ -1,0 +1,24 @@
+tweaktrak-wrapper
+=================
+
+Wrapper/build automation code in this repository is released under the Unlicense
+(see LICENSE).
+
+The TweakTrak web application itself is **not** redistributed from this
+repository; it is mirrored from https://tweaktrak.ibiza.dev/ at build time and
+packaged into the resulting executables.
+
+Third-party assets bundled into the wrapper
+-------------------------------------------
+
+Application icon (musical keyboard, U+1F3B9):
+  Source:  Noto Emoji (https://github.com/googlefonts/noto-emoji)
+  License: Apache License, Version 2.0
+           https://www.apache.org/licenses/LICENSE-2.0
+  Files:   src-tauri/icons/icon.png
+           src-tauri/icons/icon.ico
+           electron/build/icon.png
+           electron/build/icon.icns
+  The PNG glyph from Noto Emoji has been resized into the platform-specific
+  icon containers (PNG / ICO / ICNS) used by Tauri and electron-builder. No
+  modifications other than resizing have been made to the source artwork.

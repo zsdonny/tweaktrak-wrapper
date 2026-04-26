@@ -4,13 +4,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   refresh-baseline:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install fetch dependencies
         run: |
@@ -27,7 +30,42 @@ jobs:
           chmod +x scripts/verify-site.sh
           scripts/verify-site.sh site .github/site-baseline.json .github/allowed-domains.txt
 
-      - name: Update baseline hashes
+      # D′: the baseline is auto-committed only when VirusTotal + retire.js +
+      # size sanity all pass on the freshly fetched snapshot. Failure aborts
+      # the commit and opens a tracking issue with the scan report.
+      - name: Delta security scan (VT + retire.js, hard gate)
+        id: delta-scan
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+        run: |
+          chmod +x scripts/scan-delta.sh
+          scripts/scan-delta.sh site
+
+      - name: Upload delta scan report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: baseline-refresh-scan
+          path: scan-out/**
+          if-no-files-found: warn
+
+      - name: Open issue on scan failure
+        if: failure() && steps.delta-scan.conclusion == 'failure'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.existsSync('scan-out/scan-report.md')
+              ? fs.readFileSync('scan-out/scan-report.md', 'utf8')
+              : '_Delta scan report not produced._';
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Baseline refresh blocked by delta scan (${new Date().toISOString().slice(0, 10)})`,
+              body: `Auto-commit of \`.github/site-baseline.json\` was blocked because the freshly fetched snapshot failed the VirusTotal / retire.js / size-sanity hard gate.\n\n${body}\n\nReview the scan report and the upstream site before re-running this workflow.`
+            });
+
+      - name: Compute updated baseline hashes
         shell: bash
         run: |
           set -euo pipefail
