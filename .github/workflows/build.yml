@@ -660,7 +660,8 @@ jobs:
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev libssl-dev \
-            libasound2-dev
+            libasound2-dev \
+            libarchive-tools fakeroot rpm
 
       - name: Cache cargo registry + release-ci target
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -687,7 +688,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: src-tauri
-          args: --bundles appimage -- --profile release-ci
+          args: --bundles appimage,deb,rpm -- --profile release-ci
 
       - name: Locate AppImage
         id: linux-tauri-deliverable
@@ -707,6 +708,46 @@ jobs:
         with:
           name: ${{ github.event_name == 'pull_request' && format('pr-{0}-tauri-linux-binary', github.event.number) || 'tauri-linux-binary' }}
           path: ${{ steps.linux-tauri-deliverable.outputs.appimage_path }}
+          if-no-files-found: error
+
+      - name: Locate .deb package
+        id: linux-tauri-deb
+        shell: bash
+        run: |
+          set -euo pipefail
+          deb="$(find src-tauri/target/release-ci/bundle/deb -type f -name '*.deb' | head -n1)"
+          if [[ -z "$deb" ]]; then
+            echo "No .deb produced" >&2
+            find src-tauri/target/release-ci/bundle || true
+            exit 1
+          fi
+          echo "deb_path=$deb" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Tauri Linux .deb
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ github.event_name == 'pull_request' && format('pr-{0}-tauri-linux-deb', github.event.number) || 'tauri-linux-deb' }}
+          path: ${{ steps.linux-tauri-deb.outputs.deb_path }}
+          if-no-files-found: error
+
+      - name: Locate .rpm package
+        id: linux-tauri-rpm
+        shell: bash
+        run: |
+          set -euo pipefail
+          rpm_pkg="$(find src-tauri/target/release-ci/bundle/rpm -type f -name '*.rpm' | head -n1)"
+          if [[ -z "$rpm_pkg" ]]; then
+            echo "No .rpm produced" >&2
+            find src-tauri/target/release-ci/bundle || true
+            exit 1
+          fi
+          echo "rpm_path=$rpm_pkg" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Tauri Linux .rpm
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ github.event_name == 'pull_request' && format('pr-{0}-tauri-linux-rpm', github.event.number) || 'tauri-linux-rpm' }}
+          path: ${{ steps.linux-tauri-rpm.outputs.rpm_path }}
           if-no-files-found: error
 
   build-tauri-macos:
@@ -931,12 +972,16 @@ jobs:
           lin_app="$(find artifacts/electron-linux-binary  -type f -name '*.AppImage' | head -n1)"
           mac_tauri="$(find artifacts/tauri-macos-binary   -type f -name '*.dmg'      | head -n1)"
           lin_tauri="$(find artifacts/tauri-linux-binary   -type f -name '*.AppImage' | head -n1)"
+          lin_deb="$(find artifacts/tauri-linux-deb        -type f -name '*.deb'      | head -n1)"
+          lin_rpm="$(find artifacts/tauri-linux-rpm        -type f -name '*.rpm'      | head -n1)"
 
           [[ -n "$win_exe"   ]] || { echo "Missing Windows .exe"            >&2; exit 1; }
           [[ -n "$mac_dmg"   ]] || { echo "Missing Electron macOS .dmg"     >&2; exit 1; }
           [[ -n "$lin_app"   ]] || { echo "Missing Electron Linux .AppImage" >&2; exit 1; }
           [[ -n "$mac_tauri" ]] || { echo "Missing Tauri macOS .dmg"        >&2; exit 1; }
           [[ -n "$lin_tauri" ]] || { echo "Missing Tauri Linux .AppImage"   >&2; exit 1; }
+          [[ -n "$lin_deb"   ]] || { echo "Missing Tauri Linux .deb"        >&2; exit 1; }
+          [[ -n "$lin_rpm"   ]] || { echo "Missing Tauri Linux .rpm"        >&2; exit 1; }
 
           ver="${{ needs.check-changes.outputs.calver_version }}"
           cp "$win_exe"   "release-assets/TweakTrak-windows-x64.exe"
@@ -944,6 +989,8 @@ jobs:
           cp "$lin_app"   "release-assets/$(basename "$lin_app")"
           cp "$mac_tauri" "release-assets/TweakTrak-${ver}-tauri-macos.dmg"
           cp "$lin_tauri" "release-assets/TweakTrak-${ver}-tauri-linux.AppImage"
+          cp "$lin_deb"   "release-assets/TweakTrak-${ver}-tauri-linux.deb"
+          cp "$lin_rpm"   "release-assets/TweakTrak-${ver}-tauri-linux.rpm"
 
           (cd release-assets && sha256sum -- * > SHA256SUMS.txt)
           {
@@ -952,6 +999,8 @@ jobs:
             echo "lin_electron_asset=release-assets/$(basename "$lin_app")"
             echo "mac_tauri_asset=release-assets/TweakTrak-${ver}-tauri-macos.dmg"
             echo "lin_tauri_asset=release-assets/TweakTrak-${ver}-tauri-linux.AppImage"
+            echo "lin_deb_asset=release-assets/TweakTrak-${ver}-tauri-linux.deb"
+            echo "lin_rpm_asset=release-assets/TweakTrak-${ver}-tauri-linux.rpm"
           } >> "$GITHUB_OUTPUT"
 
       - name: Compute CalVer tag
@@ -971,6 +1020,8 @@ jobs:
           LIN_ELECTRON_ASSET: ${{ steps.stage.outputs.lin_electron_asset }}
           MAC_TAURI_ASSET:    ${{ steps.stage.outputs.mac_tauri_asset }}
           LIN_TAURI_ASSET:    ${{ steps.stage.outputs.lin_tauri_asset }}
+          LIN_DEB_ASSET:      ${{ steps.stage.outputs.lin_deb_asset }}
+          LIN_RPM_ASSET:      ${{ steps.stage.outputs.lin_rpm_asset }}
           REL_VERSION:        ${{ steps.ver.outputs.version }}
         shell: bash
         run: |
@@ -980,10 +1031,14 @@ jobs:
           lin_e_sha=$(sha256sum "$LIN_ELECTRON_ASSET" | awk '{print $1}')
           mac_t_sha=$(sha256sum "$MAC_TAURI_ASSET"    | awk '{print $1}')
           lin_t_sha=$(sha256sum "$LIN_TAURI_ASSET"    | awk '{print $1}')
+          lin_deb_sha=$(sha256sum "$LIN_DEB_ASSET"    | awk '{print $1}')
+          lin_rpm_sha=$(sha256sum "$LIN_RPM_ASSET"    | awk '{print $1}')
           mac_e_name=$(basename "$MAC_ELECTRON_ASSET")
           lin_e_name=$(basename "$LIN_ELECTRON_ASSET")
           mac_t_name=$(basename "$MAC_TAURI_ASSET")
           lin_t_name=$(basename "$LIN_TAURI_ASSET")
+          lin_deb_name=$(basename "$LIN_DEB_ASSET")
+          lin_rpm_name=$(basename "$LIN_RPM_ASSET")
 
           # shellcheck disable=SC2016
           {
@@ -999,6 +1054,8 @@ jobs:
             printf '| macOS — Tauri build (recommended) | `%s` | Open the disk image and drag TweakTrak into **Applications**. Full MIDI + SysEx support via native CoreMIDI. |\n' "$mac_t_name"
             printf '| macOS — Electron build (legacy) | `%s` | Open the disk image and drag TweakTrak into **Applications**. |\n' "$mac_e_name"
             printf '| Linux — Tauri build (recommended) | `%s` | `chmod +x` the file, then double-click or run from a terminal. Full MIDI + SysEx support via ALSA. |\n' "$lin_t_name"
+            printf '| Linux — Tauri build (.deb, Debian/Ubuntu) | `%s` | Install with `sudo apt install ./%s`. Full MIDI + SysEx support via ALSA. |\n' "$lin_deb_name" "$lin_deb_name"
+            printf '| Linux — Tauri build (.rpm, Fedora/openSUSE) | `%s` | Install with `sudo dnf install %s` (or `sudo zypper install %s`). Full MIDI + SysEx support via ALSA. |\n' "$lin_rpm_name" "$lin_rpm_name" "$lin_rpm_name"
             printf '| Linux — Electron build (legacy) | `%s` | `chmod +x` the file, then double-click or run from a terminal. |\n' "$lin_e_name"
             echo
             echo "> **Note for macOS/Linux users:** Both a Tauri build and an Electron build are provided this release. The Tauri builds are recommended — they are smaller, start faster, and use native MIDI (CoreMIDI on macOS, ALSA on Linux). The Electron builds remain as a fallback; they will be retired in the next release once Tauri MIDI parity is confirmed."
@@ -1018,6 +1075,8 @@ jobs:
             printf '| `%s` | `%s` |\n' "$mac_t_name" "$mac_t_sha"
             printf '| `%s` | `%s` |\n' "$mac_e_name" "$mac_e_sha"
             printf '| `%s` | `%s` |\n' "$lin_t_name" "$lin_t_sha"
+            printf '| `%s` | `%s` |\n' "$lin_deb_name" "$lin_deb_sha"
+            printf '| `%s` | `%s` |\n' "$lin_rpm_name" "$lin_rpm_sha"
             printf '| `%s` | `%s` |\n' "$lin_e_name" "$lin_e_sha"
             echo
             echo "All checksums are also attached as \`SHA256SUMS.txt\` — verify with \`sha256sum -c SHA256SUMS.txt\` (or \`shasum -a 256 -c SHA256SUMS.txt\` on macOS)."
@@ -1026,7 +1085,7 @@ jobs:
             echo
             echo "- **Windows** uses the built-in WebView2 runtime — no extra install needed on Windows 11 or up-to-date Windows 10."
             echo "- **macOS** builds are not notarized. The first time you launch the app you may need to right-click → **Open** and confirm the Gatekeeper prompt."
-            echo "- **Linux** AppImages run on most modern distributions; some systems need \`libfuse2\` for AppImage support. The Tauri AppImage also requires an ALSA-capable sound system (standard on all major distros)."
+            echo "- **Linux** Three formats are provided: AppImage (runs on most distros, may need \`libfuse2\`), .deb (Debian/Ubuntu: \`sudo apt install ./TweakTrak-*.deb\`), and .rpm (Fedora/openSUSE: \`sudo dnf install TweakTrak-*.rpm\`). All require an ALSA-capable sound system for MIDI (standard on all major distros)."
             echo "- TweakTrak Desktop does not auto-update — grab the newest release here whenever you'd like to upgrade."
             echo
             echo "Found a bug? Please [open an issue](https://github.com/${GITHUB_REPOSITORY}/issues/new) with your OS, which build you used (Tauri or Electron), and a quick description of what happened."
@@ -1046,4 +1105,6 @@ jobs:
             release-assets/TweakTrak-windows-x64.exe
             release-assets/*.dmg
             release-assets/*.AppImage
+            release-assets/*.deb
+            release-assets/*.rpm
             release-assets/SHA256SUMS.txt
