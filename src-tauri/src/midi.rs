@@ -107,13 +107,13 @@ fn open_output_by_id(id: &str) -> Result<MidiOutputConnection, String> {
 
 // ── Event payload structs ────────────────────────────────────────────────────
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct MidiMessagePayload<'a> {
     id:   &'a str,
     data: &'a [u8],
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct MidiStatePayload {
     ports: Vec<PortInfo>,
 }
