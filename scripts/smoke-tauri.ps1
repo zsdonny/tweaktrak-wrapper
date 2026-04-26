@@ -108,12 +108,26 @@ try {
   if (-not $proc.HasExited) {
     Write-Warning "smoke-tauri: process did not exit within ${SmokeProcessTimeoutSec}s; terminating."
     try { $proc.Kill($true) } catch { try { $proc.Kill() } catch { } }
-    Start-Sleep -Seconds 2
   }
 
+  # Wait for the process to fully release its stdio handles before touching the
+  # redirected stderr file. WaitForExit() (no timeout) blocks until the process
+  # object itself is disposed; cap at 10 s to avoid hanging forever.
+  $null = $proc.WaitForExit(10000)
+
   if (Test-Path -LiteralPath "$RunLog.err") {
-    Get-Content -LiteralPath "$RunLog.err" | Add-Content -LiteralPath $RunLog
-    Remove-Item -LiteralPath "$RunLog.err" -Force
+    # Retry the file operations in case the OS still has the handle open briefly.
+    $retries = 5
+    for ($i = 0; $i -lt $retries; $i++) {
+      try {
+        Get-Content -LiteralPath "$RunLog.err" | Add-Content -LiteralPath $RunLog
+        Remove-Item -LiteralPath "$RunLog.err" -Force
+        break
+      } catch {
+        if ($i -eq ($retries - 1)) { throw }
+        Start-Sleep -Milliseconds 500
+      }
+    }
   }
 }
 finally {
