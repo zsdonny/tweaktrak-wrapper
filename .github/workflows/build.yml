@@ -180,11 +180,13 @@ jobs:
             const scanBody = fs.existsSync('scan-out/scan-report.md')
               ? fs.readFileSync('scan-out/scan-report.md', 'utf8')
               : '_Delta scan report not produced._';
+            const approveUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/update-baseline.yml`;
+            const approveButton = `\n\n---\n### Approve this change\nIf the site update looks legitimate, click the link below to re-fetch, re-scan, and commit the new baseline — a release build will follow automatically.\n\n**[▶ Run update-baseline workflow](${approveUrl})**`;
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `Site baseline hash changed (${new Date().toISOString().slice(0, 10)})`,
-              body: `${hashBody}\n\n${scanBody}\n\nReview the scan report and, if the change is expected, run **update-baseline.yml** to refresh the baseline.`
+              body: `${hashBody}\n\n${scanBody}${approveButton}`
             });
 
       - name: Upload mirrored site artifact
