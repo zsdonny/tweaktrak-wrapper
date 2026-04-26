@@ -703,10 +703,9 @@ jobs:
           echo "appimage_path=$appimage" >> "$GITHUB_OUTPUT"
 
       - name: Upload Tauri Linux binary
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: tauri-linux-binary
+          name: ${{ github.event_name == 'pull_request' && format('pr-{0}-tauri-linux-binary', github.event.number) || 'tauri-linux-binary' }}
           path: ${{ steps.linux-tauri-deliverable.outputs.appimage_path }}
           if-no-files-found: error
 
@@ -775,10 +774,9 @@ jobs:
           echo "dmg_path=$dmg" >> "$GITHUB_OUTPUT"
 
       - name: Upload Tauri macOS binary
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: tauri-macos-binary
+          name: ${{ github.event_name == 'pull_request' && format('pr-{0}-tauri-macos-binary', github.event.number) || 'tauri-macos-binary' }}
           path: ${{ steps.macos-tauri-deliverable.outputs.dmg_path }}
           if-no-files-found: error
 
