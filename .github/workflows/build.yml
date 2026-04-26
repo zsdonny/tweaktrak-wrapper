@@ -611,96 +611,64 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Determine release reason
-        id: reason
-        shell: bash
-        run: |
-          set -euo pipefail
-          reasons=()
-          [[ "${{ needs.check-changes.outputs.tauri_changed }}"    == "true" ]] && reasons+=("Tauri (Windows) wrapper changed")
-          [[ "${{ needs.check-changes.outputs.electron_changed }}" == "true" ]] && reasons+=("Electron (macOS/Linux) wrapper changed")
-          [[ "${{ needs.check-changes.outputs.baseline_changed }}" == "true" ]] && reasons+=("Site baseline updated (verified upstream change)")
-          ( IFS=$'\n'; printf '%s\n' "${reasons[@]}" ) > release-reason.txt
-
       - name: Build release notes
         id: notes
         env:
           WIN_ASSET: ${{ steps.stage.outputs.win_asset }}
           MAC_ASSET: ${{ steps.stage.outputs.mac_asset }}
           LIN_ASSET: ${{ steps.stage.outputs.lin_asset }}
-          REL_TAG: ${{ steps.ver.outputs.tag }}
-          INDEX_HASH: ${{ needs.fetch-site.outputs.index_html_sha256 }}
-          MAIN_JS_PATH: ${{ needs.fetch-site.outputs.main_js_path }}
-          MAIN_JS_HASH: ${{ needs.fetch-site.outputs.main_js_sha256 }}
-          DELTA_SCAN: ${{ needs.fetch-site.outputs.delta_scan_passed }}
-          SMOKE_PASSED: ${{ needs.smoke-electron.outputs.smoke_passed }}
-          SMOKE_TAURI_PASSED: ${{ needs.smoke-tauri-windows.outputs.smoke_passed }}
+          REL_VERSION: ${{ steps.ver.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
           win_sha=$(sha256sum "$WIN_ASSET" | awk '{print $1}')
           mac_sha=$(sha256sum "$MAC_ASSET" | awk '{print $1}')
           lin_sha=$(sha256sum "$LIN_ASSET" | awk '{print $1}')
-          win_size=$(stat -c%s "$WIN_ASSET")
-          mac_size=$(stat -c%s "$MAC_ASSET")
-          lin_size=$(stat -c%s "$LIN_ASSET")
           mac_name=$(basename "$MAC_ASSET")
           lin_name=$(basename "$LIN_ASSET")
-          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
           # printf format strings below contain literal `%s` and backticks for
           # markdown; single quotes are intentional to keep them literal.
           # shellcheck disable=SC2016
           {
-            echo "TweakTrak desktop wrapper — calendar version **${REL_TAG}** (built from \`${GITHUB_SHA}\`)."
+            echo "TweakTrak Desktop **${REL_VERSION}** — the TweakTrak app, packaged as a standalone offline desktop application for Windows, macOS, and Linux."
             echo
-            echo "## Why this release"
-            while IFS= read -r line; do
-              [[ -z "$line" ]] && continue
-              echo "- ${line}"
-            done < release-reason.txt
+            echo "## Download"
             echo
-            echo "## Downloads (bare executables, no zip)"
+            echo "Pick the file for your platform:"
             echo
-            echo "| Platform | File | Size | SHA-256 |"
-            echo "|---|---|---:|---|"
-            printf '| Windows x64 | %s | %s B | `%s` |\n' "TweakTrak-windows-x64.exe" "$win_size" "$win_sha"
-            printf '| macOS | %s | %s B | `%s` |\n' "$mac_name" "$mac_size" "$mac_sha"
-            printf '| Linux x86_64 | %s | %s B | `%s` |\n' "$lin_name" "$lin_size" "$lin_sha"
+            echo "| Platform | File | How to use it |"
+            echo "|---|---|---|"
+            printf '| Windows 10/11 (x64) | `%s` | Download and double-click to launch. |\n' "TweakTrak-windows-x64.exe"
+            printf '| macOS (Intel & Apple Silicon) | `%s` | Open the disk image and drag TweakTrak into **Applications**. |\n' "$mac_name"
+            printf '| Linux (x86_64) | `%s` | `chmod +x` the file, then double-click or run it from a terminal. |\n' "$lin_name"
             echo
-            echo "All checksums are also attached as \`SHA256SUMS.txt\`."
+            echo "## What's in this version"
             echo
-            echo "## Bundled site snapshot"
+            echo "- The current TweakTrak web app, bundled offline so it works with no internet connection."
+            echo "- A real desktop window with its own icon — no browser, no tabs, no address bar."
+            echo "- No telemetry, no tracking, no network calls. External links open in your normal browser."
             echo
-            echo "| Asset | SHA-256 |"
+            echo "## Verifying your download (optional)"
+            echo
+            echo "If you'd like to confirm a download wasn't corrupted or tampered with, the SHA-256 of each file is:"
+            echo
+            echo "| File | SHA-256 |"
             echo "|---|---|"
-            printf '| `index.html` | `%s` |\n' "$INDEX_HASH"
-            printf '| main JS (`%s`) | `%s` |\n' "$MAIN_JS_PATH" "$MAIN_JS_HASH"
+            printf '| `%s` | `%s` |\n' "TweakTrak-windows-x64.exe" "$win_sha"
+            printf '| `%s` | `%s` |\n' "$mac_name" "$mac_sha"
+            printf '| `%s` | `%s` |\n' "$lin_name" "$lin_sha"
             echo
-            echo "## Security gates"
+            echo "All checksums are also attached as \`SHA256SUMS.txt\` — verify with \`sha256sum -c SHA256SUMS.txt\` (or \`shasum -a 256 -c SHA256SUMS.txt\` on macOS)."
             echo
-            echo "- Site integrity (size, signature, malware patterns, allowed-domains): ✅"
-            echo "- Baseline hash drift: ✅ (matches committed baseline)"
-            case "$DELTA_SCAN" in
-              true)    echo "- Delta security scan (VT + retire.js, hard gate): ✅";;
-              skipped) echo "- Delta security scan (VT + retire.js): not required (no baseline drift on this run)";;
-              *)       echo "- Delta security scan (VT + retire.js): ❌";;
-            esac
-            case "$SMOKE_PASSED" in
-              true) echo "- Electron runtime smoke gate (DOM mount + no blocked external assets + no fatal console): ✅";;
-              *)    echo "- Electron runtime smoke gate: ❌";;
-            esac
-            case "$SMOKE_TAURI_PASSED" in
-              true) echo "- Tauri (Windows / WebView2) runtime smoke gate (DOM mount + no fatal console + no runtime errors): ✅";;
-              *)    echo "- Tauri (Windows / WebView2) runtime smoke gate: ❌";;
-            esac
-            echo "- Build provenance: ✅ built by GitHub Actions (workflow run: ${run_url}, commit: \`${GITHUB_SHA}\`)"
+            echo "## Notes"
             echo
-            echo "## Provenance & build"
+            echo "- **Windows** uses the built-in WebView2 runtime — no extra install needed on Windows 11 or up-to-date Windows 10."
+            echo "- **macOS** builds are not notarized. The first time you launch the app you may need to right-click → **Open** and confirm the Gatekeeper prompt."
+            echo "- **Linux** AppImages run on most modern distributions; some systems need \`libfuse2\` for AppImage support."
+            echo "- TweakTrak Desktop does not auto-update — grab the newest release here whenever you'd like to upgrade."
             echo
-            echo "- Workflow run: ${run_url}"
-            echo "- Commit: \`${GITHUB_SHA}\`"
-            echo "- Wrapper licence: Unlicense. The bundled TweakTrak web app is mirrored from https://tweaktrak.ibiza.dev/ and is not redistributed in source form from this repository."
+            echo "Found a bug? Please [open an issue](https://github.com/${GITHUB_REPOSITORY}/issues/new) with your OS and a quick description of what happened."
           } > release-body.md
           echo "body_path=release-body.md" >> "$GITHUB_OUTPUT"
 
