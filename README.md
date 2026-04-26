@@ -48,6 +48,90 @@ unable to reach the network or escape the wrapper window.
   - `setPermissionRequestHandler` denies all permission prompts (geolocation,
     notifications, etc.).
 
+## Runtime smoke gates (G)
+
+Two runtime smoke checks act as **hard gates**, exercising the actual
+wrapper binaries against the freshly mirrored `site/`. Both upload a JSON
+report + screenshot/log artifact so failures are debuggable from the
+Actions UI alone.
+
+### `smoke-electron` (Linux + Chromium)
+
+`scripts/smoke-electron.sh` boots the real `electron/main.js` inside
+`xvfb` and asserts the SPA mounts under the wrapper's offline + CSP
+constraints. Fails the gate when any of:
+
+- the wrapper failed to load `index.html`;
+- the network kill-switch dropped any `http(s)` / `ws(s)` request (i.e.
+  the mirrored site references an external asset the wrapper hard-blocks
+  at runtime — e.g. a CDN font, third-party analytics);
+- the renderer logged a CSP violation, an unhandled `TypeError`,
+  `ReferenceError`, `SyntaxError`, or any console message at level
+  `error`;
+- the SPA root never gained meaningful DOM content (default threshold:
+  ≥ 50 descendants under `#root` / `#app` / `body`).
+
+### `smoke-tauri-windows` (Windows + WebView2)
+
+`scripts/smoke-tauri.ps1` builds the Tauri wrapper with the `smoke`
+cargo feature and launches the resulting exe under WebView2 on
+`windows-latest`. The smoke build injects a JS bootstrap on
+`page-load-started` that hooks `console.error` / `console.warn`,
+`window.onerror`, `window.onunhandledrejection`, and
+`securitypolicyviolation` events, then runs the same DOM probe as the
+Electron smoke and posts the captured report back through a Tauri IPC
+command (`__tweaktrak_smoke_report`) which writes JSON to disk and
+exits the app. Pass criteria match the Electron smoke (DOM mount + no
+fatal console + no runtime errors).
+
+The `smoke` feature is gated behind a cargo flag, so release binaries
+do **not** include the probe code — only the smoke CI build does.
+
+**Limitation:** the Tauri bootstrap is injected on
+`page-load-started`, slightly later than Chromium's native
+`console-message` event. Errors that fire during the very first HTML
+parse may be missed by the Tauri smoke; the Electron smoke catches
+that earlier window via the native event and remains the canonical CSP
+gate. The Tauri smoke is supplementary coverage so a WebView2-only
+regression (IPC bridge breakage, WebView2-specific behaviour, etc.)
+cannot ship silently.
+
+### Gating
+
+- **PR runs:** the `pr-gate` job aggregates both smoke jobs and acts as
+  a single required-status-check anchor for branch protection. A failed
+  smoke on a PR blocks the merge.
+- **Push / scheduled / dispatch runs:** both smoke jobs are
+  prerequisites of `release-gate` and `release-publish`; a failing
+  smoke blocks the release entirely.
+
+### Local smoke run
+
+```bash
+# Electron (Linux / macOS)
+(cd electron && npm install)
+./scripts/smoke-electron.sh site
+
+# Tauri (Windows, PowerShell)
+cargo build --features smoke --manifest-path src-tauri/Cargo.toml
+./scripts/smoke-tauri.ps1 -ExePath src-tauri/target/debug/tweaktrak-wrapper.exe -SiteDir site
+```
+
+### Diagnostic env vars
+
+Honoured by both `electron/main.js` and the smoke-feature build of
+`src-tauri` (no effect when the relevant trigger — `TWEAKTRAK_SMOKE=1`
+or the `smoke` feature — is absent, so shipped binaries are
+unaffected):
+
+| Variable | Effect |
+|---|---|
+| `TWEAKTRAK_SMOKE=1` | Boots non-interactively, captures blocked URLs (Electron) + console messages + a DOM probe, and exits. |
+| `TWEAKTRAK_SMOKE_REPORT=<path>` | Writes the JSON capture to `<path>`. |
+| `TWEAKTRAK_SMOKE_SCREENSHOT=<path>` | Electron only: writes a PNG screenshot of the renderer to `<path>`. |
+| `TWEAKTRAK_SMOKE_WAIT_MS=<int>` | How long to wait after `did-finish-load` / page-load-started before probing (default 8000). |
+| `TWEAKTRAK_SMOKE_HARD_TIMEOUT_MS=<int>` | Outer bound after which the run aborts and writes a partial report (default 60000). |
+
 ## Delta protection (E + F + D′)
 
 A "delta" is any difference between the freshly mirrored site and the
@@ -120,10 +204,15 @@ Triggers:
 Pipeline stages:
 1. detect wrapper / workflow / baseline changes; compute remote site signature
 2. fetch / cache / verify site snapshot (with `scan-delta.sh` hard gate on drift)
-3. package desktop binaries (Windows / macOS / Linux)
-4. attach provenance attestations
-5. enforce release gate
-6. publish to GitHub Releases on wrapper-or-site delta
+3. runtime smoke gates — `smoke-electron` (Linux + Chromium) and
+   `smoke-tauri-windows` (Windows + WebView2) — both boot the wrapper
+   binaries headlessly and assert the SPA mounts under offline + CSP
+   constraints
+4. PR runs: `pr-gate` aggregates the smoke jobs as a single required check
+5. package desktop binaries (Windows / macOS / Linux)
+6. attach provenance attestations
+7. enforce release gate
+8. publish to GitHub Releases on wrapper-or-site delta
 
 ### `.github/workflows/update-baseline.yml`
 
@@ -145,7 +234,30 @@ explicit minimum-privilege `permissions:` block.
 ./scripts/fetch-site.sh
 ```
 
-Windows:
+After mirroring, `fetch-site.sh` walks `index.html` for absolute external
+`<script src="https://…">` and `<link rel="stylesheet" href="https://…">`
+references, downloads the body of each, and **inlines it directly** into
+`index.html` — the `<script src="…"></script>` element is replaced with
+`<script>…body…</script>` (and likewise `<link rel="stylesheet">` becomes
+`<style>…body…</style>`), with a leading
+`/* tweaktrak: inlined from <URL> */` marker comment so upstream changes
+show up in PR diffs. This keeps the wrapper fully offline at runtime —
+required because both wrappers hard-block all `http(s)` traffic via the
+network kill-switch and forbid remote origins via CSP — while preserving
+`site/` as a single self-contained `index.html` (no `vendor/` directory).
+The inlined content is covered by the existing `index_html_sha256`
+baseline check, so any upstream change to a vendored library still trips
+hash drift through the normal flow.
+
+> **Note on Alpine.js & `'unsafe-eval'`:** the upstream SPA uses
+> Alpine.js, which evaluates `x-data` / `x-show` / etc. via `Function()`
+> and therefore requires `'unsafe-eval'` in `script-src`. Both wrappers
+> grant `'unsafe-eval'` for that reason. The network kill-switch +
+> `default-src 'none'` still hard-block any attempt to load remote code,
+> so this only enables in-page eval of already-shipped local script
+> content.
+
+Windows (local dev only — CI uses `fetch-site.sh`):
 
 ```bat
 scripts\\fetch-site.bat

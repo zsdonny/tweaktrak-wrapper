@@ -79,7 +79,11 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: site
-          key: site-${{ needs.check-changes.outputs.site_signature }}
+          # Include fetch-site.sh in the cache key so changes to the
+          # mirror logic (e.g. the cross-origin script localizer) reliably
+          # invalidate stale cached mirrors that would otherwise mask
+          # downstream smoke regressions.
+          key: site-${{ hashFiles('scripts/fetch-site.sh') }}-${{ needs.check-changes.outputs.site_signature }}
 
       - name: Install fetch dependencies
         if: steps.cache-site.outputs.cache-hit != 'true'
@@ -130,6 +134,10 @@ jobs:
         if: steps.verify.outputs.hash_changed == 'true'
         env:
           VT_API_KEY: ${{ secrets.VT_API_KEY }}
+          # Fresh uploads (cache miss) of the inlined index.html can take
+          # noticeably longer than 5 min on the public VT tier while ~70
+          # engines complete; bump the per-file poll deadline to 10 min.
+          VT_POLL_TIMEOUT_SEC: "600"
         run: |
           chmod +x scripts/scan-delta.sh
           scripts/scan-delta.sh site
@@ -167,6 +175,134 @@ jobs:
           name: mirrored-site
           path: site
           if-no-files-found: error
+
+  smoke-electron:
+    # Runtime smoke gate. Boots the real electron/main.js against the
+    # freshly mirrored site/ in xvfb and asserts that the SPA actually
+    # mounts under the wrapper's offline + CSP constraints. Fails the
+    # release if the mirrored site references external assets the wrapper
+    # hard-blocks at runtime, or if the renderer logs CSP violations / JS
+    # errors, or if the SPA root never gains real DOM content.
+    #
+    # Caveat: this only exercises the Electron (Chromium) wrapper used for
+    # macOS / Linux. The Tauri (WebView2) wrapper used on Windows applies
+    # an equivalent CSP and the same file:// model, so wrapper-induced
+    # breakage typically reproduces here, but a Tauri-specific smoke would
+    # be a useful follow-up.
+    runs-on: ubuntu-latest
+    needs: [check-changes, fetch-site]
+    permissions:
+      contents: read
+    outputs:
+      smoke_passed: ${{ steps.smoke.outputs.smoke_passed || 'false' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download mirrored site
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mirrored-site
+          path: site
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: electron/package.json
+
+      - name: Install Electron + xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          (cd electron && npm install)
+
+      - name: Run Electron smoke gate
+        id: smoke
+        run: |
+          chmod +x scripts/smoke-electron.sh
+          scripts/smoke-electron.sh site
+
+      - name: Upload smoke report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: smoke-electron-report
+          path: smoke-out/**
+          if-no-files-found: warn
+
+  smoke-tauri-windows:
+    # Companion to smoke-electron, exercising the Tauri / WebView2 wrapper
+    # that ships on Windows. Builds a debug exe with the `smoke` cargo
+    # feature (which adds a JS bootstrap injected on page-load-started
+    # that captures console / runtime errors and posts a JSON report via
+    # an IPC command) and asserts the same pass criteria the Electron
+    # smoke uses: SPA mounted under #root, no fatal console messages, no
+    # runtime errors / CSP violations.
+    #
+    # Limitation: the bootstrap is injected on page-load-started, which
+    # is slightly later than Electron's native console-message hook.
+    # Errors that fire during the very first HTML parse may be missed
+    # here; the Electron smoke remains the canonical CSP gate. This job
+    # is supplementary coverage so a Tauri-wrapper-specific regression
+    # (WebView2-only behaviour, IPC bridge breakage, etc.) cannot ship
+    # silently.
+    runs-on: windows-latest
+    needs: [check-changes, fetch-site]
+    permissions:
+      contents: read
+    outputs:
+      smoke_passed: ${{ steps.smoke.outputs.smoke_passed || 'false' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download mirrored site
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mirrored-site
+          path: site
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry + smoke target
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: cargo-smoke-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.toml', 'src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-smoke-${{ runner.os }}-
+
+      - name: Build Tauri smoke binary
+        working-directory: src-tauri
+        shell: pwsh
+        run: |
+          cargo build --features smoke
+          if (-not (Test-Path 'target/debug/tweaktrak-wrapper.exe')) {
+            throw 'smoke build did not produce target/debug/tweaktrak-wrapper.exe'
+          }
+
+      - name: Run Tauri smoke gate
+        id: smoke
+        shell: pwsh
+        run: |
+          ./scripts/smoke-tauri.ps1 `
+            -ExePath 'src-tauri/target/debug/tweaktrak-wrapper.exe' `
+            -SiteDir 'site' `
+            -OutputDir 'smoke-out-tauri'
+
+      - name: Upload Tauri smoke report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: smoke-tauri-report
+          path: smoke-out-tauri/**
+          if-no-files-found: warn
 
   build-tauri-windows:
     runs-on: windows-latest
@@ -321,10 +457,44 @@ jobs:
           path: electron/${{ steps.linux-deliverable.outputs.appimage_path }}
           if-no-files-found: error
 
+  pr-gate:
+    # Explicit pull-request gate. The smoke jobs already run on PRs and
+    # GitHub will surface any of them as a failed check, but this
+    # aggregator job gives branch protection a single required-status
+    # anchor and fails fast if any smoke or build prerequisite did not
+    # pass on a PR run. Mirrors release-gate but only fires on PRs.
+    runs-on: ubuntu-latest
+    needs:
+      - fetch-site
+      - smoke-electron
+      - smoke-tauri-windows
+    if: always() && github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    steps:
+      - name: Enforce PR gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail() { echo "$*" >&2; exit 1; }
+
+          if [[ "${{ needs.fetch-site.result }}" != "success" ]]; then
+            fail "Fetch/verify phase failed; PR is blocked."
+          fi
+          if [[ "${{ needs.smoke-electron.result }}" != "success" ]]; then
+            fail "Electron smoke gate failed on this PR. See the smoke-electron-report artifact."
+          fi
+          if [[ "${{ needs.smoke-tauri-windows.result }}" != "success" ]]; then
+            fail "Tauri (Windows) smoke gate failed on this PR. See the smoke-tauri-report artifact."
+          fi
+          echo "PR gate passed."
+
   release-gate:
     runs-on: ubuntu-latest
     needs:
       - fetch-site
+      - smoke-electron
+      - smoke-tauri-windows
       - build-tauri-windows
       - build-electron-macos
       - build-electron-linux
@@ -347,6 +517,12 @@ jobs:
           if [[ "${{ needs.fetch-site.outputs.hash_changed }}" == "true" ]]; then
             fail "Baseline hash drift detected; release is blocked pending review."
           fi
+          if [[ "${{ needs.smoke-electron.result }}" != "success" ]]; then
+            fail "Electron smoke gate failed; release is blocked. See the smoke-electron-report artifact."
+          fi
+          if [[ "${{ needs.smoke-tauri-windows.result }}" != "success" ]]; then
+            fail "Tauri (Windows) smoke gate failed; release is blocked. See the smoke-tauri-report artifact."
+          fi
           for result in "${{ needs.build-tauri-windows.result }}" "${{ needs.build-electron-macos.result }}" "${{ needs.build-electron-linux.result }}"; do
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
               fail "A platform build failed or was cancelled; release is blocked."
@@ -362,6 +538,8 @@ jobs:
     needs:
       - check-changes
       - fetch-site
+      - smoke-electron
+      - smoke-tauri-windows
       - build-tauri-windows
       - build-electron-macos
       - build-electron-linux
@@ -455,6 +633,8 @@ jobs:
           MAIN_JS_PATH: ${{ needs.fetch-site.outputs.main_js_path }}
           MAIN_JS_HASH: ${{ needs.fetch-site.outputs.main_js_sha256 }}
           DELTA_SCAN: ${{ needs.fetch-site.outputs.delta_scan_passed }}
+          SMOKE_PASSED: ${{ needs.smoke-electron.outputs.smoke_passed }}
+          SMOKE_TAURI_PASSED: ${{ needs.smoke-tauri-windows.outputs.smoke_passed }}
         shell: bash
         run: |
           set -euo pipefail
@@ -505,6 +685,14 @@ jobs:
               true)    echo "- Delta security scan (VT + retire.js, hard gate): ✅";;
               skipped) echo "- Delta security scan (VT + retire.js): not required (no baseline drift on this run)";;
               *)       echo "- Delta security scan (VT + retire.js): ❌";;
+            esac
+            case "$SMOKE_PASSED" in
+              true) echo "- Electron runtime smoke gate (DOM mount + no blocked external assets + no fatal console): ✅";;
+              *)    echo "- Electron runtime smoke gate: ❌";;
+            esac
+            case "$SMOKE_TAURI_PASSED" in
+              true) echo "- Tauri (Windows / WebView2) runtime smoke gate (DOM mount + no fatal console + no runtime errors): ✅";;
+              *)    echo "- Tauri (Windows / WebView2) runtime smoke gate: ❌";;
             esac
             echo "- Build provenance: ✅ built by GitHub Actions (workflow run: ${run_url}, commit: \`${GITHUB_SHA}\`)"
             echo

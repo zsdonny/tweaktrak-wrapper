@@ -37,6 +37,10 @@ jobs:
         id: delta-scan
         env:
           VT_API_KEY: ${{ secrets.VT_API_KEY }}
+          # Fresh uploads (cache miss) of the inlined index.html can take
+          # noticeably longer than 5 min on the public VT tier while ~70
+          # engines complete; bump the per-file poll deadline to 10 min.
+          VT_POLL_TIMEOUT_SEC: "600"
         run: |
           chmod +x scripts/scan-delta.sh
           scripts/scan-delta.sh site

@@ -5,6 +5,42 @@ const { URL } = require('url');
 
 app.commandLine.appendSwitch('enable-web-midi');
 
+// --- Smoke / diagnostic mode -------------------------------------------------
+//
+// When TWEAKTRAK_SMOKE=1 is set, the wrapper runs as a non-interactive probe:
+//
+//   * Every URL dropped by the network kill-switch is recorded.
+//   * Every console message (including CSP violations the renderer reports
+//     via console.error) is recorded.
+//   * After TWEAKTRAK_SMOKE_WAIT_MS (default 8000ms) following did-finish-load,
+//     the renderer is queried for a small DOM probe and a PNG screenshot is
+//     captured.
+//   * A JSON report is written to TWEAKTRAK_SMOKE_REPORT and the app exits.
+//
+// This mode has zero effect when the env var is unset, so it cannot affect
+// shipped binaries — it is only used by the smoke-test release gate.
+const SMOKE_MODE = process.env.TWEAKTRAK_SMOKE === '1';
+const SMOKE_REPORT_PATH = process.env.TWEAKTRAK_SMOKE_REPORT || '';
+const SMOKE_SCREENSHOT_PATH = process.env.TWEAKTRAK_SMOKE_SCREENSHOT || '';
+const SMOKE_WAIT_MS = (() => {
+  const raw = Number(process.env.TWEAKTRAK_SMOKE_WAIT_MS || '8000');
+  return Number.isFinite(raw) && raw >= 0 ? raw : 8000;
+})();
+const SMOKE_HARD_TIMEOUT_MS = (() => {
+  const raw = Number(process.env.TWEAKTRAK_SMOKE_HARD_TIMEOUT_MS || '60000');
+  return Number.isFinite(raw) && raw >= 0 ? raw : 60000;
+})();
+const smokeRecord = {
+  startedAt: new Date().toISOString(),
+  finishedAt: null,
+  appVersion: process.versions.electron,
+  loadOk: false,
+  domProbe: null,
+  blockedRequests: [],
+  consoleMessages: [],
+  errors: []
+};
+
 // --- Strict offline content policy -------------------------------------------
 //
 // The wrapper bundles a snapshot of https://tweaktrak.ibiza.dev/ that has
@@ -35,8 +71,16 @@ const CSP = [
   // engine instantiates a WebAssembly module at startup, which requires
   // 'wasm-unsafe-eval' under CSP3 — without it the main mixer view fails
   // to mount even though static dialogs (e.g. Effects) still render.
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+  // 'unsafe-eval' is required by Alpine.js (which the upstream loads from
+  // a CDN that fetch-site.sh localizes into vendor/) to evaluate
+  // `x-data` / `x-show` / etc. directives via `Function()`. The wrapper's
+  // network kill-switch + CSP `default-src 'none'` still hard-block any
+  // attempt to load remote code, so this only enables in-page eval of
+  // already-shipped local script content.
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
+  "script-src-attr 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
+  "style-src-attr 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
   "media-src 'self' blob:",
@@ -71,6 +115,15 @@ function applyHardening(targetSession) {
     if (isAllowedRequestUrl(details.url)) {
       callback({ cancel: false });
       return;
+    }
+    if (SMOKE_MODE) {
+      // Record the drop so the smoke gate can fail when the mirrored site
+      // references an external asset that the wrapper hard-blocks at runtime.
+      smokeRecord.blockedRequests.push({
+        url: details.url,
+        resourceType: details.resourceType || 'unknown',
+        method: details.method || 'GET'
+      });
     }
     // Drop anything that isn't a local asset. This is the primary network
     // kill-switch — the bundled SPA must never reach the public internet.
@@ -116,6 +169,7 @@ function createWindow() {
     width: 1280,
     height: 800,
     autoHideMenuBar: true,
+    show: !SMOKE_MODE,
     webPreferences: {
       contextIsolation: true,
       sandbox: true,
@@ -150,12 +204,131 @@ function createWindow() {
     }
   });
 
+  if (SMOKE_MODE) {
+    attachSmokeProbe(win);
+  }
+
   win.loadFile(resolveIndexPath());
+  return win;
+}
+
+// --- Smoke-mode helpers ------------------------------------------------------
+// All of the following are only invoked when SMOKE_MODE is true.
+
+function attachSmokeProbe(win) {
+  const wc = win.webContents;
+
+  wc.on('console-message', (_event, level, message, line, sourceId) => {
+    smokeRecord.consoleMessages.push({
+      // Electron levels: 0=verbose, 1=info, 2=warning, 3=error.
+      level,
+      message: String(message || ''),
+      source: sourceId ? `${sourceId}:${line}` : ''
+    });
+  });
+
+  wc.on('render-process-gone', (_event, details) => {
+    smokeRecord.errors.push(`render-process-gone: ${details && details.reason}`);
+    finalizeSmoke(win, 'render-process-gone');
+  });
+
+  wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    smokeRecord.errors.push(
+      `did-fail-load: ${errorCode} ${errorDescription} (${validatedURL})`
+    );
+  });
+
+  wc.on('did-finish-load', () => {
+    smokeRecord.loadOk = true;
+    setTimeout(() => {
+      runSmokeProbe(win).catch((err) => {
+        smokeRecord.errors.push(`probe-error: ${err && err.message}`);
+        finalizeSmoke(win, 'probe-error');
+      });
+    }, SMOKE_WAIT_MS);
+  });
+}
+
+async function runSmokeProbe(win) {
+  const wc = win.webContents;
+
+  // Small in-renderer probe. Kept self-contained (no closures over outer
+  // scope) because it runs in an isolated renderer context.
+  const probeSource = `(() => {
+    const root = document.getElementById('root') || document.getElementById('app') || document.body;
+    const all = root ? root.querySelectorAll('*') : [];
+    const text = (document.body && document.body.innerText) || '';
+    return {
+      url: location.href,
+      title: document.title,
+      hasRoot: !!root,
+      rootId: root ? root.id : null,
+      descendantCount: all.length,
+      bodyTextLength: text.length,
+      bodyTextSample: text.slice(0, 1024)
+    };
+  })()`;
+
+  try {
+    smokeRecord.domProbe = await wc.executeJavaScript(probeSource, true);
+  } catch (err) {
+    smokeRecord.errors.push(`executeJavaScript-failed: ${err && err.message}`);
+  }
+
+  if (SMOKE_SCREENSHOT_PATH) {
+    try {
+      const image = await wc.capturePage();
+      fs.mkdirSync(path.dirname(SMOKE_SCREENSHOT_PATH), { recursive: true });
+      fs.writeFileSync(SMOKE_SCREENSHOT_PATH, image.toPNG());
+    } catch (err) {
+      smokeRecord.errors.push(`screenshot-failed: ${err && err.message}`);
+    }
+  }
+
+  finalizeSmoke(win, 'ok');
+}
+
+function armSmokeHardTimeout(win) {
+  // .unref() so a stalled/early-completed run doesn't keep the event loop
+  // alive on this timer alone — finalizeSmoke()'s own app.exit() is the
+  // primary shutdown path; this timer is only a safety net.
+  setTimeout(() => {
+    if (smokeRecord.finishedAt) return;
+    smokeRecord.errors.push(`hard-timeout after ${SMOKE_HARD_TIMEOUT_MS}ms`);
+    finalizeSmoke(win, 'hard-timeout');
+  }, SMOKE_HARD_TIMEOUT_MS).unref();
+}
+
+function finalizeSmoke(win, reason) {
+  if (smokeRecord.finishedAt) return;
+  smokeRecord.finishedAt = new Date().toISOString();
+  smokeRecord.exitReason = reason;
+  if (SMOKE_REPORT_PATH) {
+    try {
+      fs.mkdirSync(path.dirname(SMOKE_REPORT_PATH), { recursive: true });
+      fs.writeFileSync(SMOKE_REPORT_PATH, JSON.stringify(smokeRecord, null, 2));
+    } catch (err) {
+      // Last-resort log; the smoke driver script will detect a missing report.
+      console.error(`[smoke] failed to write report: ${err && err.message}`);
+    }
+  }
+  try {
+    if (win && !win.isDestroyed()) {
+      win.destroy();
+    }
+  } catch (_err) {
+    // ignore
+  }
+  app.exit(0);
 }
 
 app.whenReady().then(() => {
   applyHardening(session.defaultSession);
-  createWindow();
+  const win = createWindow();
+
+  if (SMOKE_MODE) {
+    armSmokeHardTimeout(win);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

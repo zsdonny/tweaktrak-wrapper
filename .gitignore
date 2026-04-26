@@ -2,8 +2,13 @@ site/
 node_modules/
 electron/node_modules/
 electron/dist/
+electron/package-lock.json
 src-tauri/target/
+src-tauri/gen/
+src-tauri/Cargo.lock
 .DS_Store
 Thumbs.db
 site-hash-diff.md
 scan-out/
+smoke-out/
+smoke-out-tauri/

@@ -11,6 +11,14 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 
+[features]
+# `smoke` compiles in the runtime smoke probe used by the
+# smoke-tauri-windows CI gate. It adds a `__tweaktrak_smoke_report`
+# IPC command + an on_page_load script injection that captures
+# console / runtime errors and posts a JSON report. Behind a feature
+# flag so release binaries are unchanged.
+smoke = []
+
 [profile.release-ci]
 inherits = "release"
 lto = true

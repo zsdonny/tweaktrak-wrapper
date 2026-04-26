@@ -16,5 +16,12 @@ cdnjs.cloudflare.com
 fonts.googleapis.com
 fonts.gstatic.com
 
+# Project homepages / docs URLs that appear as string literals inside
+# inlined vendor bundles (not network endpoints — the wrapper's CSP +
+# kill-switch still hard-block any actual fetch). Required since
+# fetch-site.sh inlines external scripts/styles into index.html, which
+# makes any URL embedded in the upstream source visible to domains_check.
+alpinejs.dev
+
 # W3C namespace URIs (used as xmlns in inline SVG/XML, not network endpoints)
 www.w3.org
