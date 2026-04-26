@@ -16,13 +16,17 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
+import android.Manifest
+import app.tauri.PermissionState
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
+import app.tauri.annotation.Permission
+import app.tauri.annotation.PermissionCallback
 import app.tauri.annotation.TauriPlugin
+import app.tauri.plugin.JSArray
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import app.tauri.plugin.Invoke
-import org.json.JSONArray
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -45,7 +49,11 @@ class ClosePortArgs {
     var handle: Int = 0
 }
 
-@TauriPlugin
+@TauriPlugin(
+    permissions = [
+        Permission(strings = [Manifest.permission.BLUETOOTH_CONNECT], alias = "bluetoothConnect")
+    ]
+)
 class MidiPlugin(private val activity: android.app.Activity) : Plugin(activity) {
 
     companion object {
@@ -68,7 +76,7 @@ class MidiPlugin(private val activity: android.app.Activity) : Plugin(activity) 
     fun listDevices(invoke: Invoke) {
         val mm = midiManager ?: run { invoke.reject("MIDI service unavailable"); return }
         val infos = mm.devices
-        val arr = JSONArray()
+        val arr = JSArray()
         for (info in infos) {
             val obj = JSObject()
             obj.put("id", info.id)
@@ -127,7 +135,7 @@ class MidiPlugin(private val activity: android.app.Activity) : Plugin(activity) 
                 override fun onSend(data: ByteArray, offset: Int, count: Int, timestamp: Long) {
                     val payload = JSObject()
                     payload.put("handle", handle)
-                    val byteArr = JSONArray()
+                    val byteArr = JSArray()
                     for (i in offset until offset + count) byteArr.put(data[i].toInt() and 0xFF)
                     payload.put("data", byteArr)
                     payload.put("timestamp", timestamp)
@@ -168,23 +176,20 @@ class MidiPlugin(private val activity: android.app.Activity) : Plugin(activity) 
     @Command
     fun requestBluetoothPermission(invoke: Invoke) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val permission = android.Manifest.permission.BLUETOOTH_CONNECT
-            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-                activity, permission
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                androidx.core.app.ActivityCompat.requestPermissions(
-                    activity, arrayOf(permission), 1001
-                )
-            }
-            val result = JSObject()
-            result.put("granted", granted)
-            invoke.resolve(result)
+            requestPermissionForAlias("bluetoothConnect", invoke, "bluetoothPermissionCallback")
         } else {
             val result = JSObject()
             result.put("granted", true)
             invoke.resolve(result)
         }
+    }
+
+    @PermissionCallback
+    fun bluetoothPermissionCallback(invoke: Invoke) {
+        val result = JSObject()
+        result.put("granted",
+            getPermissionState("bluetoothConnect") == PermissionState.GRANTED)
+        invoke.resolve(result)
     }
 
     // ── scanBle ───────────────────────────────────────────────────────────────
@@ -220,7 +225,7 @@ class MidiPlugin(private val activity: android.app.Activity) : Plugin(activity) 
         // Stop after 5 s and return results
         Handler(Looper.getMainLooper()).postDelayed({
             scanner.stopScan(callback)
-            val arr = JSONArray()
+            val arr = JSArray()
             for (obj in found.values) arr.put(obj)
             val result = JSObject()
             result.put("devices", arr)
