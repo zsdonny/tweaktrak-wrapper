@@ -708,7 +708,7 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         working-directory: src-tauri
-        run: cargo tauri android build --apk --split-per-abi
+        run: npx --yes @tauri-apps/cli@2.10.1 android build --apk --split-per-abi
 
       - name: Stage APKs
         shell: bash
