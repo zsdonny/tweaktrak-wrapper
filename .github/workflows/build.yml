@@ -740,7 +740,9 @@ jobs:
             rm -rf gen/android/app/build/outputs/apk
             npx --yes @tauri-apps/cli@2.10.1 android build --apk --split-per-abi --target "$target"
 
-            apk="gen/android/app/build/outputs/apk/${output}/release/app-${output}-release.apk"
+            apk="$(find gen/android/app/build/outputs/apk/${output}/release \
+              -type f -name "*-${abi}-release.apk" -not -name "*-unsigned*" \
+              | sort | head -n1)"
             staged="../apk-out/TweakTrak-android-${abi}.apk"
             [[ -f "$apk" ]] || { echo "Missing APK: $apk" >&2; find gen/android/app/build/outputs/apk -type f -name '*.apk' -print >&2 || true; exit 1; }
             cp "$apk" "$staged"
