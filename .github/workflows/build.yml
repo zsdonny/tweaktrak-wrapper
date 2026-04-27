@@ -795,9 +795,8 @@ jobs:
             adb install -r apk-out/TweakTrak-android-x86_64.apk
             adb shell am start -n dev.ibiza.tweaktrak.wrapper/.MainActivity
             sleep 8
-            adb shell pidof dev.ibiza.tweaktrak.wrapper \
-              && echo "smoke-android: PASSED" \
-              || (echo "smoke-android: app process not found" && exit 1)
+            adb shell pidof dev.ibiza.tweaktrak.wrapper >/dev/null || (echo "smoke-android: app process not found" && exit 1)
+            echo "smoke-android: PASSED"
 
   build-tauri-linux:
     # Tauri wrapper for Linux — dual-shipped alongside the Electron build for
