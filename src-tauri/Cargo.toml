@@ -5,6 +5,12 @@ edition = "2021"
 description = "TweakTrak desktop wrapper"
 license = "Unlicense"
 
+# Android requires a cdylib target; desktop builds use the bin target (main.rs).
+# Both coexist: cargo picks the right one per platform.
+[lib]
+name = "tweaktrak_wrapper_lib"
+crate-type = ["cdylib", "staticlib"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -12,10 +18,10 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 
-# MIDI polyfill back-end — not needed on Windows because WebView2 (Chromium)
-# ships a native Web MIDI implementation; Tauri on macOS and Linux uses
-# WKWebView / WebKitGTK which have no Web MIDI support.
-[target.'cfg(not(target_os = "windows"))'.dependencies]
+# MIDI polyfill back-end — desktop-only (macOS and Linux).
+# Windows: WebView2 (Chromium) ships native Web MIDI; no polyfill needed.
+# Android: uses the native MidiPlugin (USB/BLE); midir has no Android backend.
+[target.'cfg(not(any(target_os = "windows", target_os = "android")))'.dependencies]
 midir = "0.10"
 
 [features]
