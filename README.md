@@ -71,8 +71,12 @@ TweakTrak site changes (or whenever the desktop wrapper itself is improved).
   - **USB-MIDI** requires a USB OTG (On-The-Go) adapter. Connect the adapter
     to your phone, plug in your MIDI device, and the app will see it
     automatically via `navigator.requestMIDIAccess()`.
-  - **BLE-MIDI** devices: pair the device in the system **Bluetooth** settings
-    first, then open TweakTrak — it will appear in the MIDI device list.
+  - **BLE-MIDI** devices: power on the device in Bluetooth-MIDI pairing or
+    advertising mode, then open TweakTrak and allow the Bluetooth permission
+    prompt. Standard BLE-MIDI devices, including devices that expose Yamaha's
+    Bluetooth MIDI transmission/reception, should appear in the MIDI list. The
+    dedicated Yamaha app / Wi-Fi project-transfer features are separate and are
+    not implemented by this wrapper.
 
 ## MIDI notes
 

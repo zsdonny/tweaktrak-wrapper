@@ -1,6 +1,7 @@
 package dev.ibiza.tweaktrak.wrapper
 
-import android.bluetooth.BluetoothAdapter
+import android.Manifest
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
@@ -16,7 +17,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
-import android.Manifest
 import app.tauri.PermissionState
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
@@ -51,7 +51,11 @@ class ClosePortArgs {
 
 @TauriPlugin(
     permissions = [
-        Permission(strings = [Manifest.permission.BLUETOOTH_CONNECT], alias = "bluetoothConnect")
+        Permission(
+            strings = [Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN],
+            alias = "bluetoothMidi"
+        ),
+        Permission(strings = [Manifest.permission.ACCESS_FINE_LOCATION], alias = "legacyBluetoothMidi")
     ]
 )
 class MidiPlugin(private val activity: android.app.Activity) : Plugin(activity) {
@@ -66,9 +70,58 @@ class MidiPlugin(private val activity: android.app.Activity) : Plugin(activity) 
     }
 
     private val handleCounter = AtomicInteger(1)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val bluetoothMidiDevices = ConcurrentHashMap<String, MidiDevice>()
     private val openDevices = ConcurrentHashMap<Int, MidiDevice>()
     private val inputPorts = ConcurrentHashMap<Int, MidiInputPort>()   // app → device
     private val outputPorts = ConcurrentHashMap<Int, MidiOutputPort>() // device → app
+
+    private fun serializeDevice(info: MidiDeviceInfo): JSObject {
+        val obj = JSObject()
+        val props = info.properties
+        obj.put("id", info.id)
+        obj.put("name", props.getString(MidiDeviceInfo.PROPERTY_NAME) ?: "Unknown")
+        obj.put("manufacturer", props.getString(MidiDeviceInfo.PROPERTY_MANUFACTURER) ?: "")
+        obj.put("inputPortCount", info.inputPortCount)
+        obj.put("outputPortCount", info.outputPortCount)
+        obj.put("deviceType", when (info.type) {
+            MidiDeviceInfo.TYPE_USB -> "usb"
+            MidiDeviceInfo.TYPE_BLUETOOTH -> "bluetooth"
+            MidiDeviceInfo.TYPE_VIRTUAL -> "virtual"
+            else -> "unknown"
+        })
+
+        val ports = JSArray()
+        for (port in info.ports) {
+            val portObj = JSObject()
+            portObj.put("id", port.portNumber)
+            portObj.put("name", port.name ?: "")
+            portObj.put("type", when (port.type) {
+                MidiDeviceInfo.PortInfo.TYPE_OUTPUT -> "output"
+                else -> "input"
+            })
+            ports.put(portObj)
+        }
+        obj.put("ports", ports)
+        return obj
+    }
+
+    private fun openBluetoothMidiDevice(device: BluetoothDevice) {
+        val mm = midiManager ?: return
+        val address = device.address ?: return
+        if (bluetoothMidiDevices.containsKey(address)) return
+
+        try {
+            mm.openBluetoothDevice(device, { midiDevice ->
+                if (midiDevice != null) {
+                    bluetoothMidiDevices[address]?.close()
+                    bluetoothMidiDevices[address] = midiDevice
+                }
+            }, mainHandler)
+        } catch (_: SecurityException) {
+            // Permission denial is reported by requestBluetoothPermission().
+        }
+    }
 
     // ── listDevices ──────────────────────────────────────────────────────────
 
@@ -78,13 +131,7 @@ class MidiPlugin(private val activity: android.app.Activity) : Plugin(activity) 
         val infos = mm.devices
         val arr = JSArray()
         for (info in infos) {
-            val obj = JSObject()
-            obj.put("id", info.id)
-            obj.put("name", info.properties.getString(MidiDeviceInfo.PROPERTY_NAME) ?: "Unknown")
-            obj.put("manufacturer", info.properties.getString(MidiDeviceInfo.PROPERTY_MANUFACTURER) ?: "")
-            obj.put("inputPortCount", info.inputPortCount)
-            obj.put("outputPortCount", info.outputPortCount)
-            arr.put(obj)
+            arr.put(serializeDevice(info))
         }
         val result = JSObject()
         result.put("devices", arr)
@@ -176,7 +223,9 @@ class MidiPlugin(private val activity: android.app.Activity) : Plugin(activity) 
     @Command
     fun requestBluetoothPermission(invoke: Invoke) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            requestPermissionForAlias("bluetoothConnect", invoke, "bluetoothPermissionCallback")
+            requestPermissionForAlias("bluetoothMidi", invoke, "bluetoothPermissionCallback")
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            requestPermissionForAlias("legacyBluetoothMidi", invoke, "bluetoothPermissionCallback")
         } else {
             val result = JSObject()
             result.put("granted", true)
@@ -186,16 +235,33 @@ class MidiPlugin(private val activity: android.app.Activity) : Plugin(activity) 
 
     @PermissionCallback
     fun bluetoothPermissionCallback(invoke: Invoke) {
+        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getPermissionState("bluetoothMidi") == PermissionState.GRANTED
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            getPermissionState("legacyBluetoothMidi") == PermissionState.GRANTED
+        } else {
+            true
+        }
         val result = JSObject()
-        result.put("granted",
-            getPermissionState("bluetoothConnect") == PermissionState.GRANTED)
+        result.put("granted", granted)
         invoke.resolve(result)
     }
 
-    // ── scanBle ───────────────────────────────────────────────────────────────
+    // ── connectBluetoothMidi ─────────────────────────────────────────────────
 
     @Command
-    fun scanBle(invoke: Invoke) {
+    fun connectBluetoothMidi(invoke: Invoke) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            getPermissionState("bluetoothMidi") != PermissionState.GRANTED) {
+            invoke.reject("Bluetooth MIDI permission not granted")
+            return
+        }
+        if (Build.VERSION.SDK_INT in Build.VERSION_CODES.M until Build.VERSION_CODES.S &&
+            getPermissionState("legacyBluetoothMidi") != PermissionState.GRANTED) {
+            invoke.reject("Bluetooth MIDI location permission not granted")
+            return
+        }
+
         val btManager = activity.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             ?: run { invoke.reject("Bluetooth unavailable"); return }
         val scanner = btManager.adapter?.bluetoothLeScanner
@@ -211,25 +277,41 @@ class MidiPlugin(private val activity: android.app.Activity) : Plugin(activity) 
 
         val callback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
-                val dev = result.device
+                val device = result.device
+                val address = device.address ?: return
                 val obj = JSObject()
-                obj.put("address", dev.address)
-                obj.put("name", dev.name ?: "BLE-MIDI Device")
+                obj.put("address", address)
+                obj.put("name", device.name ?: "BLE-MIDI Device")
                 obj.put("rssi", result.rssi)
-                found[dev.address] = obj
+                found[address] = obj
+                openBluetoothMidiDevice(device)
             }
         }
 
-        scanner.startScan(listOf(filter), settings, callback)
+        try {
+            scanner.startScan(listOf(filter), settings, callback)
+        } catch (err: SecurityException) {
+            invoke.reject(err.message ?: "Bluetooth MIDI permission denied")
+            return
+        }
 
-        // Stop after 5 s and return results
-        Handler(Looper.getMainLooper()).postDelayed({
-            scanner.stopScan(callback)
+        mainHandler.postDelayed({
+            try {
+                scanner.stopScan(callback)
+            } catch (_: SecurityException) {
+            }
             val arr = JSArray()
             for (obj in found.values) arr.put(obj)
             val result = JSObject()
             result.put("devices", arr)
             invoke.resolve(result)
-        }, 5000)
+        }, 4000)
+    }
+
+    // ── scanBle ───────────────────────────────────────────────────────────────
+
+    @Command
+    fun scanBle(invoke: Invoke) {
+        connectBluetoothMidi(invoke)
     }
 }

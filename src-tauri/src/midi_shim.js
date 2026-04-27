@@ -45,7 +45,7 @@
     var self = this;
     var parts = self.id.split(':'); // [deviceId, "in", portIndex]
     this._openPending = invoke('openInputPort', {
-      deviceId: parts[0],
+      deviceId: parseInt(parts[0], 10),
       portIndex: parseInt(parts[2], 10) || 0
     }).then(function (r) {
       self._handle = r.handle;
@@ -54,6 +54,11 @@
       return r.handle;
     });
     return this._openPending;
+  };
+
+  MIDIOutput.prototype.open = function () {
+    var self = this;
+    return this._open().then(function () { return self; });
   };
 
   MIDIOutput.prototype.send = function (data, timestamp) {
@@ -82,32 +87,50 @@
     this.type = 'input';
     this.state = 'connected';
     this.connection = 'closed';
-    this.onmidimessage = null;
+    this._onmidimessage = null;
     this._handle = null;
+    this._openPending = null;
     this._unlisten = null;
   }
 
   MIDIInput.prototype._open = function () {
     if (this._handle) return Promise.resolve(this._handle);
+    if (this._openPending) return this._openPending;
     var self = this;
     var parts = self.id.split(':'); // [deviceId, "out", portIndex]
-    return invoke('openOutputPort', {
-      deviceId: parts[0],
+    this._openPending = invoke('openOutputPort', {
+      deviceId: parseInt(parts[0], 10),
       portIndex: parseInt(parts[2], 10) || 0
     }).then(function (r) {
       self._handle = r.handle;
       self.connection = 'open';
       window.__TAURI__.event.listen('midiMessage', function (event) {
         if (event.payload.handle !== self._handle) return;
-        if (typeof self.onmidimessage !== 'function') return;
-        self.onmidimessage({
+        if (typeof self._onmidimessage !== 'function') return;
+        self._onmidimessage({
           data: new Uint8Array(event.payload.data),
           timeStamp: event.payload.timestamp / 1e6
         });
       }).then(function (fn) { self._unlisten = fn; });
+      self._openPending = null;
       return r.handle;
     });
+    return this._openPending;
   };
+
+  MIDIInput.prototype.open = function () {
+    var self = this;
+    return this._open().then(function () { return self; });
+  };
+
+  Object.defineProperty(MIDIInput.prototype, 'onmidimessage', {
+    get: function () { return this._onmidimessage; },
+    set: function (fn) {
+      this._onmidimessage = (typeof fn === 'function') ? fn : null;
+      if (this._onmidimessage) this._open().catch(function () {});
+      else this.close();
+    }
+  });
 
   MIDIInput.prototype.close = function () {
     if (!this._handle) return Promise.resolve();
@@ -126,7 +149,16 @@
     var inputs = new Map();
     var outputs = new Map();
     (rawDevices || []).forEach(function (dev) {
-      (dev.ports || []).forEach(function (port) {
+      var ports = dev.ports || [];
+      if (!ports.length) {
+        for (var inputIndex = 0; inputIndex < (dev.inputPortCount || 0); inputIndex++) {
+          ports.push({ id: inputIndex, type: 'input', name: '' });
+        }
+        for (var outputIndex = 0; outputIndex < (dev.outputPortCount || 0); outputIndex++) {
+          ports.push({ id: outputIndex, type: 'output', name: '' });
+        }
+      }
+      ports.forEach(function (port) {
         var portName = (port.name && port.name.trim()) || dev.name || 'Port ' + port.id;
         if (port.type === 'output') {
           // Device OUTPUT → Web MIDIInput (we receive MIDI)
@@ -142,9 +174,17 @@
     return {
       inputs: inputs,
       outputs: outputs,
-      sysexEnabled: false,
+      sysexEnabled: true,
       onstatechange: null
     };
+  }
+
+  function prepareBluetoothMidi() {
+    return invoke('requestBluetoothPermission')
+      .then(function (result) {
+        if (result && result.granted) return invoke('connectBluetoothMidi');
+      })
+      .catch(function () {});
   }
 
   // ---------------------------------------------------------------------------
@@ -152,7 +192,9 @@
   // ---------------------------------------------------------------------------
 
   navigator.requestMIDIAccess = function (/*options*/) {
-    return invoke('listDevices').then(function (result) {
+    return prepareBluetoothMidi().then(function () {
+      return invoke('listDevices');
+    }).then(function (result) {
       return buildMIDIAccess(result.devices);
     });
   };

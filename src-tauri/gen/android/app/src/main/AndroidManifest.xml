@@ -10,8 +10,15 @@
     <!-- BLE-MIDI -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <!-- Android 12+ (API 31+): required for BLE-MIDI scanning/connection -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s"
+        tools:ignore="PermissionImpliesUnsupportedChromeOsHardware" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"
         tools:ignore="PermissionImpliesUnsupportedChromeOsHardware" />
+    <!-- Android 6-11: BLE scans require location permission. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
     <!-- Legacy Bluetooth (API 30 and below) -->
     <uses-permission android:name="android.permission.BLUETOOTH"
         android:maxSdkVersion="30" />
