@@ -1126,7 +1126,8 @@ jobs:
         needs.check-changes.outputs.tauri_changed == 'true' ||
         needs.check-changes.outputs.electron_changed == 'true' ||
         needs.check-changes.outputs.android_changed == 'true' ||
-        needs.check-changes.outputs.baseline_changed == 'true'
+        needs.check-changes.outputs.baseline_changed == 'true' ||
+        needs.check-changes.outputs.workflow_changed == 'true'
       )
     permissions:
       contents: write
