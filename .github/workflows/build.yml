@@ -1165,8 +1165,8 @@ jobs:
 
           ver="${{ needs.check-changes.outputs.calver_version }}"
           cp "$win_exe"   "release-assets/TweakTrak-windows-x64.exe"
-          cp "$mac_dmg"   "release-assets/$(basename "$mac_dmg")"
-          cp "$lin_app"   "release-assets/$(basename "$lin_app")"
+          cp "$mac_dmg"   "release-assets/TweakTrak-${ver}-electron-macos.dmg"
+          cp "$lin_app"   "release-assets/TweakTrak-${ver}-electron-linux.AppImage"
           cp "$mac_tauri" "release-assets/TweakTrak-${ver}-tauri-macos.dmg"
           cp "$lin_tauri" "release-assets/TweakTrak-${ver}-tauri-linux.AppImage"
           cp "$lin_deb"   "release-assets/TweakTrak-${ver}-tauri-linux.deb"
@@ -1183,8 +1183,8 @@ jobs:
           (cd release-assets && sha256sum -- * > SHA256SUMS.txt)
           {
             echo "win_asset=release-assets/TweakTrak-windows-x64.exe"
-            echo "mac_electron_asset=release-assets/$(basename "$mac_dmg")"
-            echo "lin_electron_asset=release-assets/$(basename "$lin_app")"
+            echo "mac_electron_asset=release-assets/TweakTrak-${ver}-electron-macos.dmg"
+            echo "lin_electron_asset=release-assets/TweakTrak-${ver}-electron-linux.AppImage"
             echo "mac_tauri_asset=release-assets/TweakTrak-${ver}-tauri-macos.dmg"
             echo "lin_tauri_asset=release-assets/TweakTrak-${ver}-tauri-linux.AppImage"
             echo "lin_deb_asset=release-assets/TweakTrak-${ver}-tauri-linux.deb"

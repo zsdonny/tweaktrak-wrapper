@@ -1,9 +1,9 @@
-# TweakTrak Desktop
+# TweakTrak Desktop & Mobile
 
-TweakTrak as a standalone desktop app for **Windows, macOS, and Linux** — the
+TweakTrak as a standalone app for **Windows, macOS, Linux, and Android** — the
 same TweakTrak you'd use at [tweaktrak.ibiza.dev](https://tweaktrak.ibiza.dev/),
-but in its own window, fully offline, with no browser tabs and no network
-chatter.
+but in its own window (or its own Android app), fully offline, with no browser
+tabs and no network chatter.
 
 ## Download
 
@@ -14,9 +14,9 @@ Grab the latest installer for your platform from the
 |---|---|---|
 | Windows 10/11 (x64) | `TweakTrak-windows-x64.exe` | Double-click to launch — no installer wizard. |
 | macOS — Tauri (recommended) | `TweakTrak-<version>-tauri-macos.dmg` | Open the disk image and drag TweakTrak to **Applications**. Full MIDI + SysEx. |
-| macOS — Electron (legacy) | `TweakTrak-<version>.dmg` | Same experience, larger download. Will be retired next release. |
+| macOS — Electron (legacy) | `TweakTrak-<version>-electron-macos.dmg` | Same experience, larger download. Will be retired next release. |
 | Linux — Tauri (recommended) | `TweakTrak-<version>-tauri-linux.AppImage` | `chmod +x` then run. Full MIDI + SysEx via ALSA. |
-| Linux — Electron (legacy) | `TweakTrak-<version>.AppImage` | Same experience, larger download. Will be retired next release. |
+| Linux — Electron (legacy) | `TweakTrak-<version>-electron-linux.AppImage` | Same experience, larger download. Will be retired next release. |
 | Android 7.0+ (most phones, arm64-v8a) | `TweakTrak-android-arm64-v8a.apk` | Sideload — see [Android notes](#android) below. |
 | Android 7.0+ (older 32-bit ARM) | `TweakTrak-android-armeabi-v7a.apk` | Sideload only for older 32-bit phones/tablets. |
 
@@ -74,9 +74,7 @@ TweakTrak site changes (or whenever the desktop wrapper itself is improved).
   - **BLE-MIDI** devices: power on the device in Bluetooth-MIDI pairing or
     advertising mode, then open TweakTrak and allow the Bluetooth permission
     prompt. Standard BLE-MIDI devices, including devices that expose Yamaha's
-    Bluetooth MIDI transmission/reception, should appear in the MIDI list. The
-    dedicated Yamaha app / Wi-Fi project-transfer features are separate and are
-    not implemented by this wrapper.
+    Bluetooth MIDI transmission/reception, should appear in the MIDI list.
 
 ## MIDI notes
 
