@@ -19,3 +19,15 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# MidiPlugin is registered from Rust by class name, and Tauri invokes command
+# methods reflectively. Keep those names and annotations stable in release APKs.
+-keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,Signature,InnerClasses,EnclosingMethod
+-keep @app.tauri.annotation.TauriPlugin class * { *; }
+-keepclassmembers class * {
+	@app.tauri.annotation.Command <methods>;
+	@app.tauri.annotation.PermissionCallback <methods>;
+}
+-keep class dev.ibiza.tweaktrak.wrapper.OpenPortArgs { *; }
+-keep class dev.ibiza.tweaktrak.wrapper.SendArgs { *; }
+-keep class dev.ibiza.tweaktrak.wrapper.ClosePortArgs { *; }
