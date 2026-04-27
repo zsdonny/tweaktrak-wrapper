@@ -1231,7 +1231,9 @@ jobs:
 
           # shellcheck disable=SC2016
           {
-            echo "TweakTrak Desktop **${REL_VERSION}** — the TweakTrak app, packaged as a standalone offline application for Windows, macOS, Linux, and Android."
+            echo "TweakTrak Desktop **${REL_VERSION}** — the TweakTrak app, packaged as a standalone offline app for Windows, macOS, Linux, and Android. Works fully offline, no telemetry, no auto-update."
+            echo
+            echo "**Quick picks:** Windows → \`TweakTrak-windows-x64.exe\` · macOS → \`${mac_t_name}\` · Linux → \`${lin_t_name}\` · Android → \`TweakTrak-android-arm64-v8a.apk\` (most phones). Full file list and SHA-256 checksums below."
             echo
             echo "## Download"
             echo
