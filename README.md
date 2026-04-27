@@ -63,9 +63,9 @@ TweakTrak site changes (or whenever the desktop wrapper itself is improved).
   sideloading is required:
   1. On your phone, go to **Settings → Apps → Special app access → Install
      unknown apps** and enable it for your browser or file manager.
-    2. Download the `arm64-v8a` APK directly to your phone. Use `armeabi-v7a`
-      only for older 32-bit ARM devices; `x86` / `x86_64` builds are mainly for
-      emulators and ChromeOS.
+  2. Download the `arm64-v8a` APK directly to your phone. Use `armeabi-v7a`
+     only for older 32-bit ARM devices; `x86` / `x86_64` builds are mainly for
+     emulators and ChromeOS.
   3. Tap the downloaded file to install.
   - Minimum Android 7.0 (API 24).
   - **USB-MIDI** requires a USB OTG (On-The-Go) adapter. Connect the adapter
